@@ -33,11 +33,12 @@ def _update_ends(ctx):
     """
     to_delete = []
     for a in ctx.ends:
-        try:
-            endowment = ctx.ends[a].pop(0)
-            ctx.curr_ends[a] = endowment
-        except IndexError:
-            to_delete.append(a)
+        if a not in ctx.curr_ends:
+            try:
+                endowment = ctx.ends[a].pop(0)
+                ctx.curr_ends[a] = endowment
+            except IndexError:
+                to_delete.append(a)
 
     for a in to_delete:
         del ctx.ends[a]
@@ -61,3 +62,15 @@ def _get_curr_prefs(ctx):
     end_set = reduce(lambda x, y: x.union(set(y)), ctx.curr_ends.values(), set({}))  # all possible endowments
     for a, p in ctx.prefs.items():
         ctx.curr_prefs[a] = _get_curr_agent_prefs(p, end_set)
+
+
+def _build_ttc_graph(ctx):
+    # need reverse relationship between endowments and agents
+    reverse_ends = {end: a for a, end in ctx.curr_ends.items()}
+
+    ctx.G.clear()
+
+    for a, p in ctx.curr_prefs.items():
+        ctx.G[a] = map(lambda e: reverse_ends[e], ctx.curr_prefs[a][0])
+
+

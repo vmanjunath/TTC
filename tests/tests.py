@@ -10,8 +10,8 @@ class SimpleCaseTest(unittest.TestCase):
             'a1': [['o0'], ['o2'], ['o1']],
             'a2': [['o0'], ['o1'], ['o2']]
         }
-        self.ends = {a: ['o{}'.format(i)] for i, a in enumerate(self.prefs.keys())}
-        self.priority = {a: i for i, a in enumerate(self.prefs.keys())}
+        self.ends = {a: ['o{}'.format(i)] for i, a in enumerate(sorted(self.prefs.keys()))}
+        self.priority = {a: i for i, a in enumerate(sorted(self.prefs.keys()))}
 
     @unittest.skip
     def test_simple_case(self):
@@ -26,7 +26,7 @@ class MainTest(unittest.TestCase):
     def setUp(self):
         self.prefs = {'a1': [['o1', 'o2']], 'a2': [['o1'], ['o2']]}
         self.ends = {'a1': ['o1'], 'a2': ['o2']}
-        self.priority = {a: i for i, a in enumerate(self.prefs.keys())}
+        self.priority = {a: i for i, a in enumerate(sorted(self.prefs.keys()))}
 
     def test_returns_alloc(self):
         alloc = ttc.ttc(self.prefs, self.ends, self.priority)
@@ -61,6 +61,11 @@ class UpdateEndsTest(unittest.TestCase):
             persistence_test={},
             U=set({})
         )
+
+    def test_update_ends_doesnt_touch_existing_endowments(self):
+        self.ctx.curr_ends['a1'] = -1  # This could be the case if we've popped -1 previously. This should remain
+        ttc._update_ends(self.ctx)
+        self.assertEqual(self.ctx.curr_ends['a1'], -1)
 
     def test_update_ends_picks_one_endowment_per_agent(self):
         ttc._update_ends(self.ctx)
@@ -108,7 +113,28 @@ class BuildGraphTest(unittest.TestCase):
         pass
 
     def test_build_ttc_graph(self):
-        pass
+        prefs = {
+            'a0': [['o1', 'o2']],
+            'a1': [['o0'], ['o2'], ['o1']],
+            'a2': [['o0'], ['o1'], ['o2']],
+            'a3': [['o3']]
+        }
+        curr_ends = {a: 'o{}'.format(i) for i, a in enumerate(sorted(prefs.keys()))}
+        ctx = ttc.TTCContext(
+            curr_prefs=prefs,
+            curr_ends=curr_ends,
+            prefs={},
+            ends={},
+            G={},
+            persistence_test={},
+            U={}
+        )
+        ttc._build_ttc_graph(ctx)
+        self.assertEqual({'a1', 'a2'}, set(ctx.G['a0']))
+        self.assertEqual({'a0'}, set(ctx.G['a1']))
+        self.assertEqual({'a0'}, set(ctx.G['a2']))
+        self.assertEqual({'a3'}, set(ctx.G['a3']))
+
 
 
 
