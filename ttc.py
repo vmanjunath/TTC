@@ -188,4 +188,37 @@ def _collect_adjacent_to_labeled(AL, reverse_G, L, priority):
                 AL.enqueue(a, priority=priority(a))
 
 
+def _first_reachable_U(F, ctx):
+    ctx.X.clear()
+    verts = set(F.keys())
+    while verts:
+        curr_vert = verts.pop()
+        path = [curr_vert]
+        curr_vert = F[curr_vert]
+        while curr_vert not in ctx.U:
+            if curr_vert in ctx.X:
+                break
+            path.append(curr_vert)
+            curr_vert = F[curr_vert]
+            assert curr_vert not in path  # If this fails, we're going in circles and shouldn't be.
+        for vert in path:
+            if curr_vert in ctx.U:
+                ctx.X[vert] = curr_vert
+            else:
+                ctx.X[vert] = ctx.X[curr_vert]
+            if vert in verts:
+                verts.remove(vert)
+    return ctx.X
+
+
+def _record_persistences(ctx, F):
+    for a in ctx.X.keys():
+        ctx.persistence_test[a] = _create_persistence(ctx, F, a, ctx.curr_ends[ctx.X[a]])
+
+
+def _create_persistence(ctx, F, a, end):
+    """
+    Returns a function that returns F[a] if the first reachable unsatisfied agent in F still holds end
+    """
+    return lambda: F[a] if ctx.curr_ends[ctx.X[a]] == end else None
 

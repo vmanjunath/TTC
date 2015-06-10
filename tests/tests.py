@@ -203,7 +203,15 @@ class SubgraphTest(unittest.TestCase):
                 },
             U={4, 5, 6},
             curr_ends=dict(zip(range(1, 7), 'abcdef')),
-            )
+            X={
+                1: 5,
+                2: 4,
+                3: 5,
+                4: 5,
+                5: 6,
+                6: 4
+            }
+        )
         self.priority = dict(zip('abcdef', range(1, 7)))
 
     def test_subgraph_picks_single_edge_for_each_node(self):
@@ -257,3 +265,40 @@ class SubgraphTest(unittest.TestCase):
             6: 2
         }
         self.assertEqual(F, expected_F)
+
+    def test_first_reachable_U(self):
+        F = {
+            1: 3,
+            2: 4,
+            3: 5,
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        ttc._first_reachable_U(F, self.ctx)
+        expected_X = {
+            1: 5,
+            2: 4,
+            3: 5,
+            4: 5,
+            5: 5,
+            6: 4
+        }
+        self.assertEqual(self.ctx.X, expected_X)
+
+    def test_persistence(self):
+        F = {
+            1: 3,
+            2: 4,
+            3: 5,
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        ttc._record_persistences(self.ctx, F)
+        # change 5's endowment and there shuldn't be persistence for 1, 3, or 4
+        self.ctx.curr_ends[5] = 'a'
+        self.assertIsNone(self.ctx.persistence_test[1]())
+        # leave 4's endowment alone so there should be persistence for 2 and 6
+        self.assertEqual(self.ctx.persistence_test[2](), 4)
+
