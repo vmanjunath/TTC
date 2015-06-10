@@ -2,6 +2,20 @@ import unittest
 import ttc
 
 
+def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
+                persistence_test=None, U=set({}), alloc=None):
+    return ttc.TTCContext(
+        prefs=prefs or {},
+        curr_ends=curr_ends or {},
+        ends=ends or {},
+        curr_prefs=curr_prefs or {},
+        G=G or {},
+        persistence_test=persistence_test or {},
+        U=U,
+        alloc=alloc or {}
+    )
+
+
 class SimpleCaseTest(unittest.TestCase):
 
     def setUp(self):
@@ -175,15 +189,3 @@ class UnsatisfiedTest(unittest.TestCase):
         self.assertNotIn('b', ctx.U)
 
 
-def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
-                persistence_test=None, U=set({}), alloc=None):
-    return ttc.TTCContext(
-        prefs=prefs or {},
-        curr_ends=curr_ends or {},
-        ends=ends or {},
-        curr_prefs=curr_prefs or {},
-        G=G or {},
-        persistence_test=persistence_test or {},
-        U=U,
-        alloc=alloc or {}
-    )

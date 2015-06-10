@@ -135,3 +135,4 @@ def _iteratively_remove_sinks(ctx):
     _update_context(ctx)
     while _remove_terminal_sinks(ctx):
         _update_context(ctx)
+
