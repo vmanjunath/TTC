@@ -2,6 +2,21 @@ import unittest
 import ttc
 
 
+def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
+                persistence_test=None, U=set({}), alloc=None, X=None):
+    return ttc.TTCContext(
+        prefs=prefs or {},
+        curr_ends=curr_ends or {},
+        ends=ends or {},
+        curr_prefs=curr_prefs or {},
+        G=G or {},
+        persistence_test=persistence_test or {},
+        U=U,
+        alloc=alloc or {},
+        X=X or {}
+    )
+
+
 class SimpleCaseTest(unittest.TestCase):
 
     def setUp(self):
@@ -11,7 +26,7 @@ class SimpleCaseTest(unittest.TestCase):
             'a2': [['o0'], ['o1'], ['o2']]
         }
         self.ends = {a: ['o{}'.format(i)] for i, a in enumerate(sorted(self.prefs.keys()))}
-        self.priority = {a: i for i, a in enumerate(sorted(self.prefs.keys()))}
+        self.priority = {'o{}'.format(i): i for i in range(len(self.prefs))}
 
     @unittest.skip
     def test_simple_case(self):
@@ -175,15 +190,70 @@ class UnsatisfiedTest(unittest.TestCase):
         self.assertNotIn('b', ctx.U)
 
 
-def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
-                persistence_test=None, U=set({}), alloc=None):
-    return ttc.TTCContext(
-        prefs=prefs or {},
-        curr_ends=curr_ends or {},
-        ends=ends or {},
-        curr_prefs=curr_prefs or {},
-        G=G or {},
-        persistence_test=persistence_test or {},
-        U=U,
-        alloc=alloc or {}
-    )
+class SubgraphTest(unittest.TestCase):
+    def setUp(self):
+        self.ctx = new_context(
+            G={
+                1: [1, 3],
+                2: [4, 2, 1],
+                3: [5, 3],
+                4: [3],
+                5: [1, 6],
+                6: [2]
+                },
+            U={4, 5, 6},
+            curr_ends=dict(zip(range(1, 7), 'abcdef')),
+            )
+        self.priority = dict(zip('abcdef', range(1, 7)))
+
+    def test_subgraph_picks_single_edge_for_each_node(self):
+        F = ttc._subgraph(self.ctx, self.priority)
+        expected_subgraph = {
+            1: 3,
+            2: 4,
+            3: 5,
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        self.assertEqual(F, expected_subgraph)
+
+    def test_reverse_graph(self):
+        reverse_G = {
+            1: {2, 5, 1},
+            2: {2, 6},
+            3: {1, 3, 4},
+            4: {2},
+            5: {3},
+            6: {5}
+        }
+        self.assertEqual(reverse_G, ttc._reverse_graph(self.ctx.G))
+
+    def test_U_select(self):
+        agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
+        F = {}
+        ttc._U_select(F, self.ctx.U, self.ctx.G, agent_priority)
+        expected_F = {
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        self.assertEqual(F, expected_F)
+
+    def test_sat_select(self):
+        agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
+        F = {
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        ttc._sat_select(F, self.ctx.U, self.ctx.G, agent_priority)
+        expected_F = {
+            1: 3,
+            2: 4,
+            3: 5,
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        self.assertEqual(F, expected_F)

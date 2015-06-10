@@ -1,6 +1,7 @@
 from collections import namedtuple
 from functools import reduce
 from tarjan import tarjan
+from fibonacci_heap_mod import Fibonacci_heap
 
 TTCContext = namedtuple('TTCContext', ['prefs',  # Starts as input prefs, but elements popped as agents trades
                                        'ends',  # Starts as input ends, but elements popped as agents trade
@@ -10,7 +11,8 @@ TTCContext = namedtuple('TTCContext', ['prefs',  # Starts as input prefs, but el
                                        'persistence_test',  # A function that returns a boolean for each agent to
                                                             # determine persistence.
                                        'U',  # Set of unsatisfied agents in current round
-                                       'alloc'  # The final allocation
+                                       'alloc',  # The final allocation
+                                       'X'  # First reachable unsatisfied agent
                                        ])
 
 
@@ -23,7 +25,8 @@ def ttc(prefs, ends, priority):
         G={},
         persistence_test={},
         U=set({}),
-        alloc={}
+        alloc={},
+        X={}
     )
     return ends
 
@@ -48,6 +51,7 @@ def _update_ends(ctx):
 
 
 def _get_curr_agent_prefs(pref, end_set):
+    # TODO: filter out objects that conflict with other endowments or allocs from preferences
     clean_pref = []
     for ic in pref:
         clean_ic = list(filter(lambda x: x in end_set, ic))
@@ -124,7 +128,7 @@ def _remove_terminal_sinks(ctx):
     return found_terminal_sink
 
 
-def _update_context(ctx):
+def _update_context_and_clear_cycles(ctx):
     _update_ends(ctx)
     _get_curr_prefs(ctx)
     _build_ttc_graph(ctx)
@@ -132,6 +136,56 @@ def _update_context(ctx):
 
 
 def _iteratively_remove_sinks(ctx):
-    _update_context(ctx)
+    _update_context_and_clear_cycles(ctx)
     while _remove_terminal_sinks(ctx):
-        _update_context(ctx)
+        _update_context_and_clear_cycles(ctx)
+
+
+def _subgraph(ctx, priority):
+    pass
+
+
+def _reverse_graph(G):
+    reverse_G = {v: set({}) for v in G}
+    for v, ws in G.items():
+        for w in ws:
+            reverse_G[w].add(v)
+    return reverse_G
+
+
+def _U_select(F, U, G,  agent_priority):
+    """
+    updates F for members of U so that there's an edge to each member's highest priority neighbor in G
+    agent_priority is a function mapping agents to their endowment's priority
+    """
+    for u in U:
+        F[u] = min(G[u], key=agent_priority)
+
+
+def _sat_select(F, U, G, agent_priority, L=None):
+    """
+    Keep sets of labeled (who have an out edge in F) and unlabeled vertices of F. Label each vertex by labeling
+    unlabeled vertices that are adjacent to labeled vertices.
+    """
+    if not L:
+        L = U.copy()
+    UL = set(G.keys()).difference(L)
+    AL = Fibonacci_heap()  # Adjacent to labeled
+    reverse_G = _reverse_graph(G)
+    while UL:
+        _collect_adjacent_to_labeled(AL, reverse_G, L, agent_priority)
+        a = AL.dequeue_min().get_value()
+        labeled_adjacent_to_a = filter(lambda adj_to_a: adj_to_a in L, G[a])
+        F[a] = min(labeled_adjacent_to_a, key=agent_priority)
+        L.add(a)
+        UL.remove(a)
+
+
+def _collect_adjacent_to_labeled(AL, reverse_G, L, priority):
+    for labeled in L:
+        for a in reverse_G[labeled]:
+            if a not in L:
+                AL.enqueue(a, priority=priority(a))
+
+
+
