@@ -48,18 +48,13 @@ class MainTest(unittest.TestCase):
 
 class UpdateEndsTest(unittest.TestCase):
     def setUp(self):
-        self.ctx = ttc.TTCContext(
+        self.ctx = new_context(
             prefs={'a1': [], 'a2': [], 'a3': []},
             ends={
                 'a1': list(range(4)),
                 'a2': list(range(5, 6)),
                 'a3': []
             },
-            curr_ends={},
-            curr_prefs={},
-            G={},
-            persistence_test={},
-            U=set({})
         )
 
     def test_update_ends_doesnt_touch_existing_endowments(self):
@@ -81,7 +76,7 @@ class UpdateEndsTest(unittest.TestCase):
 
 class GetCurrPrefsTest(unittest.TestCase):
     def setUp(self):
-        self.ctx = ttc.TTCContext(
+        self.ctx = new_context(
             prefs={'a1': [[2, 4], [1]], 'a2': [[0, 3], [5]]},
             ends={
                 'a1': [0, 3, 5],
@@ -91,10 +86,6 @@ class GetCurrPrefsTest(unittest.TestCase):
                 'a1': [0],
                 'a2': [1]
             },
-            curr_prefs={},
-            G={},
-            persistence_test={},
-            U=set({})
         )
 
     def test_get_curr_prefs_omits_non_curr_ends(self):
@@ -109,9 +100,6 @@ class GetCurrPrefsTest(unittest.TestCase):
 
 
 class BuildGraphTest(unittest.TestCase):
-    def setUp(self):
-        pass
-
     def test_build_ttc_graph(self):
         prefs = {
             'a0': [['o1', 'o2']],
@@ -120,15 +108,8 @@ class BuildGraphTest(unittest.TestCase):
             'a3': [['o3']]
         }
         curr_ends = {a: 'o{}'.format(i) for i, a in enumerate(sorted(prefs.keys()))}
-        ctx = ttc.TTCContext(
-            curr_prefs=prefs,
-            curr_ends=curr_ends,
-            prefs={},
-            ends={},
-            G={},
-            persistence_test={},
-            U={}
-        )
+        ctx = new_context(curr_prefs=prefs, curr_ends=curr_ends)
+
         ttc._build_ttc_graph(ctx)
         self.assertEqual({'a1', 'a2'}, set(ctx.G['a0']))
         self.assertEqual({'a0'}, set(ctx.G['a1']))
@@ -136,7 +117,56 @@ class BuildGraphTest(unittest.TestCase):
         self.assertEqual({'a3'}, set(ctx.G['a3']))
 
 
+class SinkAnalysisTest(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_finds_terminal_sink(self):
+        ctx = new_context(
+            prefs={
+                'a': [[1]],
+                'b': [[0]]
+            },
+            curr_ends={'a': 0, 'b': 1},
+            ends={'a': [], 'b': []},
+            curr_prefs={
+                'a': [[1]],
+                'b': [[0]]
+            },
+            G={'a': ['b'], 'b': ['a']}
+        )
+
+        self.assertTrue(ttc._remove_terminal_sinks(ctx))
+        self.assertEqual(ctx.alloc['a'], [1])
+        self.assertEqual(ctx.alloc['b'], [0])
+        self.assertNotIn('a', ctx.G)
+        self.assertNotIn('a', ctx.curr_prefs)
+        self.assertNotIn('a', ctx.curr_ends)
 
 
+class UnsatisfiedTest(unittest.TestCase):
+    def test_computes_unsatisfied(self):
+        ctx = new_context(
+            curr_ends={'a': 0, 'b': 1},
+            curr_prefs={
+                'a': [[1], [0]],
+                'b': [[1], [0]]
+                },
+            )
+        ttc._unsatisfied(ctx)
+        self.assertIn('a', ctx.U)
+        self.assertNotIn('b', ctx.U)
 
 
+def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
+                persistence_test=None, U=set({}), alloc=None):
+    return ttc.TTCContext(
+        prefs=prefs or {},
+        curr_ends=curr_ends or {},
+        ends=ends or {},
+        curr_prefs=curr_prefs or {},
+        G=G or {},
+        persistence_test=persistence_test or {},
+        U=U,
+        alloc=alloc or {}
+    )
