@@ -3,7 +3,7 @@ import ttc
 
 
 def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
-                persistence_test=None, U=set({}), alloc=None):
+                persistence_test=None, U=set({}), alloc=None, X=None):
     return ttc.TTCContext(
         prefs=prefs or {},
         curr_ends=curr_ends or {},
@@ -12,7 +12,8 @@ def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
         G=G or {},
         persistence_test=persistence_test or {},
         U=U,
-        alloc=alloc or {}
+        alloc=alloc or {},
+        X=X or {}
     )
 
 
@@ -239,6 +240,20 @@ class SubgraphTest(unittest.TestCase):
         }
         self.assertEqual(F, expected_F)
 
-
-
-
+    def test_sat_select(self):
+        agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
+        F = {
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        ttc._sat_select(F, self.ctx.U, self.ctx.G, agent_priority)
+        expected_F = {
+            1: 3,
+            2: 4,
+            3: 5,
+            4: 3,
+            5: 1,
+            6: 2
+        }
+        self.assertEqual(F, expected_F)
