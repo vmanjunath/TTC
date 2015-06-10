@@ -83,8 +83,8 @@ class GetCurrPrefsTest(unittest.TestCase):
                 'a2': [1, 2, 4]
             },
             curr_ends={
-                'a1': [0],
-                'a2': [1]
+                'a1': 0,
+                'a2': 1
             },
         )
 
@@ -118,9 +118,6 @@ class BuildGraphTest(unittest.TestCase):
 
 
 class SinkAnalysisTest(unittest.TestCase):
-    def setUp(self):
-        pass
-
     def test_finds_terminal_sink(self):
         ctx = new_context(
             prefs={
@@ -143,6 +140,26 @@ class SinkAnalysisTest(unittest.TestCase):
         self.assertNotIn('a', ctx.curr_prefs)
         self.assertNotIn('a', ctx.curr_ends)
 
+    def test_iterative_sink_removal(self):
+        prefs = {
+            'a{}'.format(i): list(map(lambda x: [x], range(i+1))) for i in range(5)
+        }
+        ends = {'a{}'.format(i): [i] for i in range(5)}
+        ctx = new_context(
+            prefs=prefs,
+            ends=ends
+        )
+        ttc._iteratively_remove_sinks(ctx)
+        self.assertEqual(ctx.alloc['a0'], [0])
+        self.assertEqual(ctx.alloc['a4'], [4])
+
+        self.assertEqual(ctx.prefs, {})
+        self.assertEqual(ctx.curr_prefs, {})
+        self.assertEqual(ctx.ends, {})
+        self.assertEqual(ctx.curr_ends, {})
+        self.assertEqual(ctx.G, {})
+        self.assertEqual(ctx.U, set({}))
+
 
 class UnsatisfiedTest(unittest.TestCase):
     def test_computes_unsatisfied(self):
@@ -153,7 +170,7 @@ class UnsatisfiedTest(unittest.TestCase):
                 'b': [[1], [0]]
                 },
             )
-        ttc._unsatisfied(ctx)
+        ttc._collect_unsatisfied(ctx)
         self.assertIn('a', ctx.U)
         self.assertNotIn('b', ctx.U)
 

@@ -61,7 +61,7 @@ def _get_curr_prefs(ctx):
     """
     Return the restriction of each agent's preference to curr_ends.
     """
-    end_set = reduce(lambda x, y: x.union(set(y)), ctx.curr_ends.values(), set({}))  # all possible endowments
+    end_set = reduce(lambda x, y: x.union({y}), ctx.curr_ends.values(), set({}))  # all possible endowments
     for a, p in ctx.prefs.items():
         ctx.curr_prefs[a] = _get_curr_agent_prefs(p, end_set)
 
@@ -82,7 +82,7 @@ def _add_to_U(a, ctx):
         ctx.U.add(a)
 
 
-def _unsatisfied(ctx):
+def _collect_unsatisfied(ctx):
     ctx.U.clear()
     for a in ctx.curr_ends:
         _add_to_U(a, ctx)
@@ -122,3 +122,16 @@ def _remove_terminal_sinks(ctx):
                 del ctx.curr_prefs[a]
 
     return found_terminal_sink
+
+
+def _update_context(ctx):
+    _update_ends(ctx)
+    _get_curr_prefs(ctx)
+    _build_ttc_graph(ctx)
+    _collect_unsatisfied(ctx)
+
+
+def _iteratively_remove_sinks(ctx):
+    _update_context(ctx)
+    while _remove_terminal_sinks(ctx):
+        _update_context(ctx)
