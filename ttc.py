@@ -48,6 +48,7 @@ def _update_ends(ctx):
 
 
 def _get_curr_agent_prefs(pref, end_set):
+    # TODO: filter out objects that conflict with other endowments or allocs from preferences
     clean_pref = []
     for ic in pref:
         clean_ic = list(filter(lambda x: x in end_set, ic))
@@ -124,7 +125,7 @@ def _remove_terminal_sinks(ctx):
     return found_terminal_sink
 
 
-def _update_context(ctx):
+def _update_context_and_clear_cycles(ctx):
     _update_ends(ctx)
     _get_curr_prefs(ctx)
     _build_ttc_graph(ctx)
@@ -132,7 +133,27 @@ def _update_context(ctx):
 
 
 def _iteratively_remove_sinks(ctx):
-    _update_context(ctx)
+    _update_context_and_clear_cycles(ctx)
     while _remove_terminal_sinks(ctx):
-        _update_context(ctx)
+        _update_context_and_clear_cycles(ctx)
 
+
+def _subgraph(ctx, priority):
+    pass
+
+
+def _reverse_graph(G):
+    reverse_G = {v: set({}) for v in G}
+    for v, ws in G.items():
+        for w in ws:
+            reverse_G[w].add(v)
+    return reverse_G
+
+
+def _U_select(F, U, G,  agent_priority):
+    """
+    updates F for members of U so that there's an edge to each member's highest priority neighbor in G
+    agent_priority is a function mapping agents to their endowment's priority
+    """
+    for u in U:
+        F[u] = min(G[u], key=agent_priority)
