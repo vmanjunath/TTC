@@ -133,7 +133,7 @@ class BuildGraphTest(unittest.TestCase):
 
 
 class SinkAnalysisTest(unittest.TestCase):
-    def test_finds_terminal_sink(self):
+    def test_doesnt_find_terminal_sink_with_everyone_in_U(self):
         ctx = new_context(
             prefs={
                 'a': [[1]],
@@ -145,12 +145,30 @@ class SinkAnalysisTest(unittest.TestCase):
                 'a': [[1]],
                 'b': [[0]]
             },
-            G={'a': ['b'], 'b': ['a']}
+            G={'a': ['b'], 'b': ['a']},
+            U={'a', 'b'}
+        )
+        self.assertFalse(ttc._remove_terminal_sinks(ctx))
+
+    def test_finds_terminal_sink(self):
+        ctx = new_context(
+            prefs={
+                'a': [[0, 1]],
+                'b': [[0, 1]]
+            },
+            curr_ends={'a': 0, 'b': 1},
+            ends={'a': [], 'b': []},
+            curr_prefs={
+                'a': [[0, 1]],
+                'b': [[0, 1]]
+            },
+            G={'a': ['a', 'b'], 'b': ['a', 'b']},
+            U=set({})
         )
 
         self.assertTrue(ttc._remove_terminal_sinks(ctx))
-        self.assertEqual(ctx.alloc['a'], [1])
-        self.assertEqual(ctx.alloc['b'], [0])
+        self.assertEqual(ctx.alloc['a'], [0])
+        self.assertEqual(ctx.alloc['b'], [1])
         self.assertNotIn('a', ctx.G)
         self.assertNotIn('a', ctx.curr_prefs)
         self.assertNotIn('a', ctx.curr_ends)
@@ -302,3 +320,25 @@ class SubgraphTest(unittest.TestCase):
         # leave 4's endowment alone so there should be persistence for 2 and 6
         self.assertEqual(self.ctx.persistence_test[2](), 4)
 
+
+class TradeTest(unittest.TestCase):
+    def test_trade(self):
+        ctx = new_context(
+            curr_ends=dict(zip(range(1, 6), 'abcde'))
+        )
+        F = {
+            1: 2,
+            2: 3,
+            3: 1,
+            4: 5,
+            5: 4,
+        }
+        ttc._trade(ctx, F)
+        expected_curr_ends = {
+            1: 'b',
+            2: 'c',
+            3: 'a',
+            4: 'e',
+            5: 'd'
+        }
+        self.assertEqual(expected_curr_ends, ctx.curr_ends)

@@ -110,17 +110,15 @@ def _remove_terminal_sinks(ctx):
     for sink in sinks:
         if _is_terminal(sink, ctx):
             found_terminal_sink = True
-            alloc_next = ctx.curr_ends[sink[-1]]  # this is what you give the first guy
             for a in sink:
                 #  make assignment:
                 #  remove curr_pref[a], G[a], curr_end[a]
                 #  add alloc[a]
                 #  NB. _update_ends() takes care of ends[a] and prefs[a] so don't worry about it here
                 if a in ctx.alloc:
-                    ctx.alloc[a].append(alloc_next)
+                    ctx.alloc[a].append(ctx.curr_ends[a])
                 else:
-                    ctx.alloc[a] = [alloc_next]
-                alloc_next = ctx.curr_ends[a]  # for the next guy
+                    ctx.alloc[a] = [ctx.curr_ends[a]]
                 del ctx.curr_ends[a]  # remove it from the problem
                 del ctx.G[a]
                 del ctx.curr_prefs[a]
@@ -221,4 +219,20 @@ def _create_persistence(ctx, F, a, end):
     Returns a function that returns F[a] if the first reachable unsatisfied agent in F still holds end
     """
     return lambda: F[a] if ctx.curr_ends[ctx.X[a]] == end else None
+
+
+def _trade(ctx, F):
+    """
+    Find cycles in F efficiently using Tarjan's algorithm.
+    """
+    # tarjan takes a dict with list values
+    tarjan_F = {a: [e] for a, e in F.items()}
+    cycles = tarjan(tarjan_F)
+
+    for cycle in cycles:
+        last_end = ctx.curr_ends[cycle[-1]]
+        assert len(cycle) > 1
+        for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
+            ctx.curr_ends[a] = ctx.curr_ends[b]
+        ctx.curr_ends[cycle[0]] = last_end
 
