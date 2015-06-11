@@ -1,7 +1,8 @@
 from collections import namedtuple
 from functools import reduce
 from tarjan import tarjan
-from fibonacci_heap_mod import Fibonacci_heap
+from heap_set import HeapSet
+
 
 TTCContext = namedtuple('TTCContext', ['prefs',  # Starts as input prefs, but elements popped as agents trades
                                        'ends',  # Starts as input ends, but elements popped as agents trade
@@ -28,7 +29,22 @@ def ttc(prefs, ends, priority):
         alloc={},
         X={}
     )
-    return ends
+    while ctx.prefs:
+        _update_ends(ctx)
+        _get_curr_prefs(ctx)
+
+        _build_ttc_graph(ctx)
+
+        _iteratively_remove_sinks(ctx)
+
+        F = _subgraph(ctx, priority)
+
+        _record_persistences(ctx, F)
+
+        _trade(ctx, F)
+
+    return ctx.alloc
+
 
 
 def _update_ends(ctx):
@@ -77,7 +93,7 @@ def _build_ttc_graph(ctx):
     ctx.G.clear()
 
     for a, p in ctx.curr_prefs.items():
-        ctx.G[a] = map(lambda e: reverse_ends[e], ctx.curr_prefs[a][0])
+        ctx.G[a] = list(map(lambda e: reverse_ends[e], ctx.curr_prefs[a][0]))  # couldn't you just use p[0] instead of ctx.curr_prefs[a][0]?
 
 
 def _add_to_U(a, ctx):
@@ -92,8 +108,35 @@ def _collect_unsatisfied(ctx):
         _add_to_U(a, ctx)
 
 
+def _is_sink(scc, G):
+    for v in scc:
+        for w in G[v]:
+            if w not in scc:
+                return False
+    return True
+
+
+def _get_sinks(G):
+    sccs = tarjan(G)
+    return list(filter(lambda scc: _is_sink(scc, G), sccs))
+
+
 def _is_terminal(sink, ctx):
     return reduce(lambda x, a: x and a not in ctx.U, sink, True)
+
+
+def _scrub_from_curr_prefs(ctx, alloc):
+    for a, p in ctx.curr_prefs.items():
+        blank_ic = False
+        for ic in p:
+            if alloc in ic:
+                ic.remove(alloc)
+                if not ic:
+                    blank_ic = True
+                break
+        if blank_ic:
+            p.remove([])
+
 
 
 def _remove_terminal_sinks(ctx):
@@ -105,7 +148,7 @@ def _remove_terminal_sinks(ctx):
     """
     found_terminal_sink = False
 
-    sinks = tarjan(ctx.G)
+    sinks = _get_sinks(ctx.G)
 
     for sink in sinks:
         if _is_terminal(sink, ctx):
@@ -115,18 +158,21 @@ def _remove_terminal_sinks(ctx):
                 #  remove curr_pref[a], G[a], curr_end[a]
                 #  add alloc[a]
                 #  NB. _update_ends() takes care of ends[a] and prefs[a] so don't worry about it here
+                alloc = ctx.curr_ends[a]
                 if a in ctx.alloc:
-                    ctx.alloc[a].append(ctx.curr_ends[a])
+                    ctx.alloc[a].append(alloc)
                 else:
-                    ctx.alloc[a] = [ctx.curr_ends[a]]
+                    ctx.alloc[a] = [alloc]
                 del ctx.curr_ends[a]  # remove it from the problem
                 del ctx.G[a]
                 del ctx.curr_prefs[a]
+                # Now you have to remove alloc from everyone else's curre_prefs
+                _scrub_from_curr_prefs(ctx, alloc)
 
     return found_terminal_sink
 
 
-def _update_context_and_clear_cycles(ctx):
+def _update_context_and_clear_cycles(ctx):  # rename this to _update_context_and_build_graph
     _update_ends(ctx)
     _get_curr_prefs(ctx)
     _build_ttc_graph(ctx)
@@ -140,7 +186,18 @@ def _iteratively_remove_sinks(ctx):
 
 
 def _subgraph(ctx, priority):
-    pass
+    agent_priority = _agent_priority(ctx, priority)
+    F = {}
+    L = set({})
+    if ctx.persistence_test:
+        _persistence_select(F, L, ctx.persistence_test)
+    _U_select(F, L, ctx.U, ctx.G, agent_priority)
+    _sat_select(F, L, ctx.G, agent_priority)
+    return F
+
+
+def _agent_priority(ctx, priority):
+    return lambda a: priority[ctx.curr_ends[a]]
 
 
 def _reverse_graph(G):
@@ -151,39 +208,46 @@ def _reverse_graph(G):
     return reverse_G
 
 
-def _U_select(F, U, G,  agent_priority):
+def _U_select(F, L, U, G,  agent_priority):
     """
     updates F for members of U so that there's an edge to each member's highest priority neighbor in G
     agent_priority is a function mapping agents to their endowment's priority
     """
     for u in U:
         F[u] = min(G[u], key=agent_priority)
+        L.add(u)
 
 
-def _sat_select(F, U, G, agent_priority, L=None):
+def _persistence_select(F, L, persistence_test):
+    for a in persistence_test:
+        persist = persistence_test[a]()
+        if persist:
+            F[a] = persist
+            L.add(a)
+
+
+def _sat_select(F, L, G, agent_priority):
     """
     Keep sets of labeled (who have an out edge in F) and unlabeled vertices of F. Label each vertex by labeling
     unlabeled vertices that are adjacent to labeled vertices.
     """
-    if not L:
-        L = U.copy()
     UL = set(G.keys()).difference(L)
-    AL = Fibonacci_heap()  # Adjacent to labeled
+    AL = HeapSet(agent_priority)  # Adjacent to labeled
     reverse_G = _reverse_graph(G)
     while UL:
-        _collect_adjacent_to_labeled(AL, reverse_G, L, agent_priority)
-        a = AL.dequeue_min().get_value()
+        _collect_adjacent_to_labeled(AL, reverse_G, L)
+        a = AL.pop()
         labeled_adjacent_to_a = filter(lambda adj_to_a: adj_to_a in L, G[a])
         F[a] = min(labeled_adjacent_to_a, key=agent_priority)
         L.add(a)
         UL.remove(a)
 
 
-def _collect_adjacent_to_labeled(AL, reverse_G, L, priority):
+def _collect_adjacent_to_labeled(AL, reverse_G, L):
     for labeled in L:
         for a in reverse_G[labeled]:
             if a not in L:
-                AL.enqueue(a, priority=priority(a))
+                AL.add(a)
 
 
 def _first_reachable_U(F, ctx):
@@ -193,9 +257,7 @@ def _first_reachable_U(F, ctx):
         curr_vert = verts.pop()
         path = [curr_vert]
         curr_vert = F[curr_vert]
-        while curr_vert not in ctx.U:
-            if curr_vert in ctx.X:
-                break
+        while curr_vert not in ctx.U and curr_vert not in ctx.X:
             path.append(curr_vert)
             curr_vert = F[curr_vert]
             assert curr_vert not in path  # If this fails, we're going in circles and shouldn't be.
@@ -211,10 +273,10 @@ def _first_reachable_U(F, ctx):
 
 def _record_persistences(ctx, F):
     for a in ctx.X.keys():
-        ctx.persistence_test[a] = _create_persistence(ctx, F, a, ctx.curr_ends[ctx.X[a]])
+        ctx.persistence_test[a] = _persistence(ctx, F, a, ctx.curr_ends[ctx.X[a]])
 
 
-def _create_persistence(ctx, F, a, end):
+def _persistence(ctx, F, a, end):
     """
     Returns a function that returns F[a] if the first reachable unsatisfied agent in F still holds end
     """
@@ -231,8 +293,8 @@ def _trade(ctx, F):
 
     for cycle in cycles:
         last_end = ctx.curr_ends[cycle[-1]]
-        assert len(cycle) > 1
-        for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
-            ctx.curr_ends[a] = ctx.curr_ends[b]
-        ctx.curr_ends[cycle[0]] = last_end
-
+        if len(cycle) > 1:  # Tarjan finds SCCs. With out degree of 1 for every vertex, if len(cycle) == 1,
+                            # it's not a cycle
+            for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
+                ctx.curr_ends[a] = ctx.curr_ends[b]
+            ctx.curr_ends[cycle[0]] = last_end
