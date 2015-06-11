@@ -393,5 +393,132 @@ class TTCTest(unittest.TestCase):
         }
         self.assertEqual(expected_alloc, alloc)
 
+    def test_idempotence_sethuraman_saban(self):
+        prefs = {
+            1: [['a', 'c']],
+            2: [['a', 'b', 'd']],
+            3: [['c', 'e']],
+            4: [['c']],
+            5: [['a', 'f']],
+            6: [['b']]
+        }
+        ends = {
+            1: ['a'],
+            2: ['d'],
+            3: ['e'],
+            4: ['c'],
+            5: ['f'],
+            6: ['b']
+        }
+        priority = dict(zip(list('abcdef'), range(1, 7)))
+        expected_alloc = {
+            1: ['a'],
+            2: ['d'],
+            3: ['e'],
+            4: ['c'],
+            5: ['f'],
+            6: ['b']
+        }
+        alloc = ttc.ttc(prefs, ends, priority)
+        self.assertEqual(expected_alloc, alloc)
 
+    def test_example_from_jaramillo_manjunath(self):
+        prefs = {
+            1: [['a']],
+            2: [['a'], ['b']],
+            3: [['f']],
+            4: [['c', 'd', 'e', 'f']],
+            5: [['d', 'e', 'g']],
+            6: [['d', 'e']],
+            7: [['d'], ['g']],
+            8: [['d', 'h', 'i']],
+            9: [['c', 'i']],
+            10: [['a', 'b', 'j']],
+            11: [['e', 'i', 'k']]
+        }
+        ends = {a: [e] for a,e in dict(zip(range(1, 12), list('abcdefghijk'))).items()}
+        priority = dict(zip(list('abcdefghijk'), range(1, 12)))
+
+        alloc = ttc.ttc(prefs, ends, priority)
+        expected_alloc = {
+            1: ['a'],
+            2: ['b'],
+            3: ['f'],
+            4: ['c'],
+            5: ['g'],
+            6: ['e'],
+            7: ['d'],
+            8: ['h'],
+            9: ['i'],
+            10: ['j'],
+            11: ['k']
+        }
+        self.assertEqual(alloc, expected_alloc)
+
+    def test_idempotence_jaramillo_manjunath(self):
+        prefs = {
+            1: [['a']],
+            2: [['a'], ['b']],
+            3: [['f']],
+            4: [['c', 'd', 'e', 'f']],
+            5: [['d', 'e', 'g']],
+            6: [['d', 'e']],
+            7: [['d'], ['g']],
+            8: [['d', 'h', 'i']],
+            9: [['c', 'i']],
+            10: [['a', 'b', 'j']],
+            11: [['e', 'i', 'k']]
+        }
+        priority = dict(zip(list('abcdefghijk'), range(1, 12)))
+        ends = {
+            1: ['a'],
+            2: ['b'],
+            3: ['f'],
+            4: ['c'],
+            5: ['g'],
+            6: ['e'],
+            7: ['d'],
+            8: ['h'],
+            9: ['i'],
+            10: ['j'],
+            11: ['k']
+        }
+        expected_alloc = {
+            1: ['a'],
+            2: ['b'],
+            3: ['f'],
+            4: ['c'],
+            5: ['g'],
+            6: ['e'],
+            7: ['d'],
+            8: ['h'],
+            9: ['i'],
+            10: ['j'],
+            11: ['k']
+        }
+        alloc = ttc.ttc(prefs, ends, priority)
+        self.assertEqual(alloc, expected_alloc)
+
+    def test_unzu_molis_1(self):
+        prefs = {
+            'a1': [['h2'], ['h1']],
+            'a2': [['h3'], ['h2']],
+            'a3': [['h4', 'h5'], ['h3']],
+            'a4': [['h1'], ['h5'], ['h4']],
+            'a5': [['h6'], ['h2'], ['h4'], ['h5']],
+            'a6': [['h6', 'h7']],
+            'a7': [['h6'], ['h7']],
+            'a8': [['h9', 'h5'], ['h8']],
+            'a9': [['h9', 'h10']],
+            'a10': [['h9', 'h10']]
+        }
+        priority = {'h{}'.format(i): i for i in range(1, 11)}
+        ends = {'a{}'.format(i): ['h{}'.format(i)] for i in range(1, 11)}
+
+        alloc = ttc.ttc(prefs, ends, priority)
+        expected_alloc = {'a3': ['h5'], 'a8': ['h8'], 'a2': ['h3'],
+                          'a4': ['h1'], 'a5': ['h4'], 'a7': ['h6'],
+                          'a6': ['h7'], 'a1': ['h2'], 'a10': ['h10'], 'a9': ['h9']}
+
+        self.assertEqual(alloc, expected_alloc)
 
