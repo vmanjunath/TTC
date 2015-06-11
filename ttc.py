@@ -140,7 +140,18 @@ def _iteratively_remove_sinks(ctx):
 
 
 def _subgraph(ctx, priority):
-    pass
+    agent_priority = _agent_priority(ctx, priority)
+    F = {}
+    L = set({})
+    if ctx.persistence_test:
+        _persistence_select(F, L, ctx.persistence_test)
+    _U_select(F, L, ctx.U, ctx.G, agent_priority)
+    _sat_select(F, L, ctx.G, agent_priority)
+    return F
+
+
+def _agent_priority(ctx, priority):
+    return lambda a: priority[ctx.curr_ends[a]]
 
 
 def _reverse_graph(G):
@@ -151,22 +162,29 @@ def _reverse_graph(G):
     return reverse_G
 
 
-def _U_select(F, U, G,  agent_priority):
+def _U_select(F, L, U, G,  agent_priority):
     """
     updates F for members of U so that there's an edge to each member's highest priority neighbor in G
     agent_priority is a function mapping agents to their endowment's priority
     """
     for u in U:
         F[u] = min(G[u], key=agent_priority)
+        L.add(u)
 
 
-def _sat_select(F, U, G, agent_priority, L=None):
+def _persistence_select(F, L, persistence_test):
+    for a in persistence_test:
+        persist = persistence_test[a]()
+        if persist:
+            F[a] = persist
+            L.add(a)
+
+
+def _sat_select(F, L, G, agent_priority):
     """
     Keep sets of labeled (who have an out edge in F) and unlabeled vertices of F. Label each vertex by labeling
     unlabeled vertices that are adjacent to labeled vertices.
     """
-    if not L:
-        L = U.copy()
     UL = set(G.keys()).difference(L)
     AL = Fibonacci_heap()  # Adjacent to labeled
     reverse_G = _reverse_graph(G)
@@ -193,9 +211,7 @@ def _first_reachable_U(F, ctx):
         curr_vert = verts.pop()
         path = [curr_vert]
         curr_vert = F[curr_vert]
-        while curr_vert not in ctx.U:
-            if curr_vert in ctx.X:
-                break
+        while curr_vert not in ctx.U and curr_vert not in ctx.X:
             path.append(curr_vert)
             curr_vert = F[curr_vert]
             assert curr_vert not in path  # If this fails, we're going in circles and shouldn't be.
@@ -211,10 +227,10 @@ def _first_reachable_U(F, ctx):
 
 def _record_persistences(ctx, F):
     for a in ctx.X.keys():
-        ctx.persistence_test[a] = _create_persistence(ctx, F, a, ctx.curr_ends[ctx.X[a]])
+        ctx.persistence_test[a] = _persistence(ctx, F, a, ctx.curr_ends[ctx.X[a]])
 
 
-def _create_persistence(ctx, F, a, end):
+def _persistence(ctx, F, a, end):
     """
     Returns a function that returns F[a] if the first reachable unsatisfied agent in F still holds end
     """
@@ -235,4 +251,3 @@ def _trade(ctx, F):
         for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
             ctx.curr_ends[a] = ctx.curr_ends[b]
         ctx.curr_ends[cycle[0]] = last_end
-

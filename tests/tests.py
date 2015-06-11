@@ -258,13 +258,15 @@ class SubgraphTest(unittest.TestCase):
     def test_U_select(self):
         agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
         F = {}
-        ttc._U_select(F, self.ctx.U, self.ctx.G, agent_priority)
+        L = set({})
+        ttc._U_select(F, L, self.ctx.U, self.ctx.G, agent_priority)
         expected_F = {
             4: 3,
             5: 1,
             6: 2
         }
         self.assertEqual(F, expected_F)
+        self.assertIn(4, L)
 
     def test_sat_select(self):
         agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
@@ -273,7 +275,8 @@ class SubgraphTest(unittest.TestCase):
             5: 1,
             6: 2
         }
-        ttc._sat_select(F, self.ctx.U, self.ctx.G, agent_priority)
+        L = self.ctx.U.copy()
+        ttc._sat_select(F, L, self.ctx.G, agent_priority)
         expected_F = {
             1: 3,
             2: 4,
@@ -283,6 +286,7 @@ class SubgraphTest(unittest.TestCase):
             6: 2
         }
         self.assertEqual(F, expected_F)
+        self.assertIn(1, L)
 
     def test_first_reachable_U(self):
         F = {
@@ -314,11 +318,22 @@ class SubgraphTest(unittest.TestCase):
             6: 2
         }
         ttc._record_persistences(self.ctx, F)
-        # change 5's endowment and there shuldn't be persistence for 1, 3, or 4
+        # change 5's endowment and there shouldn't be persistence for 1, 3, or 4
         self.ctx.curr_ends[5] = 'a'
         self.assertIsNone(self.ctx.persistence_test[1]())
         # leave 4's endowment alone so there should be persistence for 2 and 6
         self.assertEqual(self.ctx.persistence_test[2](), 4)
+
+    def test_persistence_select(self):
+        self.ctx.persistence_test[1] = lambda: 2
+        self.ctx.persistence_test[2] = lambda: None
+        L = set({})
+        F = {}
+        ttc._persistence_select(F, L, self.ctx.persistence_test)
+        self.assertEqual(F[1], 2)
+        self.assertNotIn(2, F)
+        self.assertIn(1, L)
+        self.assertNotIn(2, L)
 
 
 class TradeTest(unittest.TestCase):
