@@ -28,7 +28,20 @@ def ttc(prefs, ends, priority):
         alloc={},
         X={}
     )
-    return ends
+    while ctx.prefs:
+        _update_ends(ctx)
+        _get_curr_prefs(ctx)
+
+        _build_ttc_graph(ctx)
+
+        _iteratively_remove_sinks(ctx)
+
+        F = _subgraph(ctx, priority)
+
+        _trade(ctx, F)
+
+    return ctx.alloc
+
 
 
 def _update_ends(ctx):
@@ -77,7 +90,7 @@ def _build_ttc_graph(ctx):
     ctx.G.clear()
 
     for a, p in ctx.curr_prefs.items():
-        ctx.G[a] = map(lambda e: reverse_ends[e], ctx.curr_prefs[a][0])
+        ctx.G[a] = list(map(lambda e: reverse_ends[e], ctx.curr_prefs[a][0]))  # couldn't you just use p[0] instead of ctx.curr_prefs[a][0]?
 
 
 def _add_to_U(a, ctx):
@@ -92,8 +105,35 @@ def _collect_unsatisfied(ctx):
         _add_to_U(a, ctx)
 
 
+def _is_sink(scc, G):
+    for v in scc:
+        for w in G[v]:
+            if w not in scc:
+                return False
+    return True
+
+
+def _get_sinks(G):
+    sccs = tarjan(G)
+    return list(filter(lambda scc: _is_sink(scc, G), sccs))
+
+
 def _is_terminal(sink, ctx):
     return reduce(lambda x, a: x and a not in ctx.U, sink, True)
+
+
+def _scrub_from_curr_prefs(ctx, alloc):
+    for a, p in ctx.curr_prefs.items():
+        blank_ic = False
+        for ic in p:
+            if alloc in ic:
+                ic.remove(alloc)
+                if not ic:
+                    blank_ic = True
+                break
+        if blank_ic:
+            p.remove([])
+
 
 
 def _remove_terminal_sinks(ctx):
@@ -105,7 +145,7 @@ def _remove_terminal_sinks(ctx):
     """
     found_terminal_sink = False
 
-    sinks = tarjan(ctx.G)
+    sinks = _get_sinks(ctx.G)
 
     for sink in sinks:
         if _is_terminal(sink, ctx):
@@ -115,18 +155,21 @@ def _remove_terminal_sinks(ctx):
                 #  remove curr_pref[a], G[a], curr_end[a]
                 #  add alloc[a]
                 #  NB. _update_ends() takes care of ends[a] and prefs[a] so don't worry about it here
+                alloc = ctx.curr_ends[a]
                 if a in ctx.alloc:
-                    ctx.alloc[a].append(ctx.curr_ends[a])
+                    ctx.alloc[a].append(alloc)
                 else:
-                    ctx.alloc[a] = [ctx.curr_ends[a]]
+                    ctx.alloc[a] = [alloc]
                 del ctx.curr_ends[a]  # remove it from the problem
                 del ctx.G[a]
                 del ctx.curr_prefs[a]
+                # Now you have to remove alloc from everyone else's curre_prefs
+                _scrub_from_curr_prefs(ctx, alloc)
 
     return found_terminal_sink
 
 
-def _update_context_and_clear_cycles(ctx):
+def _update_context_and_clear_cycles(ctx):  # rename this to _update_context_and_build_graph
     _update_ends(ctx)
     _get_curr_prefs(ctx)
     _build_ttc_graph(ctx)
@@ -247,7 +290,8 @@ def _trade(ctx, F):
 
     for cycle in cycles:
         last_end = ctx.curr_ends[cycle[-1]]
-        assert len(cycle) > 1
-        for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
-            ctx.curr_ends[a] = ctx.curr_ends[b]
-        ctx.curr_ends[cycle[0]] = last_end
+        if len(cycle) > 1:  # Tarjan finds SCCs. With out degree of 1 for every vertex, if len(cycle) == 1,
+                            # it's not a cycle
+            for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
+                ctx.curr_ends[a] = ctx.curr_ends[b]
+            ctx.curr_ends[cycle[0]] = last_end

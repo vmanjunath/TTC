@@ -28,7 +28,6 @@ class SimpleCaseTest(unittest.TestCase):
         self.ends = {a: ['o{}'.format(i)] for i, a in enumerate(sorted(self.prefs.keys()))}
         self.priority = {'o{}'.format(i): i for i in range(len(self.prefs))}
 
-    @unittest.skip
     def test_simple_case(self):
         alloc = ttc.ttc(self.prefs, self.ends, self.priority)
 
@@ -41,13 +40,14 @@ class MainTest(unittest.TestCase):
     def setUp(self):
         self.prefs = {'a1': [['o1', 'o2']], 'a2': [['o1'], ['o2']]}
         self.ends = {'a1': ['o1'], 'a2': ['o2']}
-        self.priority = {a: i for i, a in enumerate(sorted(self.prefs.keys()))}
+        self.priority = {'o1': 1, 'o2': 2}
 
     def test_returns_alloc(self):
+        ends = self.ends.copy()
         alloc = ttc.ttc(self.prefs, self.ends, self.priority)
 
         # Every agent gets an endowment
-        self.assertEqual(alloc.keys(), self.ends.keys())
+        self.assertEqual(alloc.keys(), ends.keys())
 
         # Every agent gets as many allocated as he was endowed with
         for a in self.ends:
@@ -133,6 +133,16 @@ class BuildGraphTest(unittest.TestCase):
 
 
 class SinkAnalysisTest(unittest.TestCase):
+    def test_get_sinks(self):
+        G={
+            'a': ['a'],
+            'b': ['a'],
+            'c': ['c', 'b']
+        }
+        expected_sinks = [['a']]
+        sinks = ttc._get_sinks(G)
+        self.assertEqual(sinks, expected_sinks)
+
     def test_doesnt_find_terminal_sink_with_everyone_in_U(self):
         ctx = new_context(
             prefs={
@@ -192,6 +202,13 @@ class SinkAnalysisTest(unittest.TestCase):
         self.assertEqual(ctx.curr_ends, {})
         self.assertEqual(ctx.G, {})
         self.assertEqual(ctx.U, set({}))
+
+    def test_scrub_from_curr_prefs(self):
+        curr_prefs = {'a1': [['a', 'b', 'c'], ['d'], ['f']]}
+        ctx = new_context(curr_prefs=curr_prefs)
+        ttc._scrub_from_curr_prefs(ctx, 'd')
+        expected_curr_prefs = {'a1': [['a', 'b', 'c'], ['f']]}
+        self.assertEqual(expected_curr_prefs, ctx.curr_prefs)
 
 
 class UnsatisfiedTest(unittest.TestCase):
@@ -357,3 +374,4 @@ class TradeTest(unittest.TestCase):
             5: 'd'
         }
         self.assertEqual(expected_curr_ends, ctx.curr_ends)
+
