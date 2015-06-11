@@ -1,7 +1,8 @@
 from collections import namedtuple
 from functools import reduce
 from tarjan import tarjan
-from fibonacci_heap_mod import Fibonacci_heap
+from heap_set import HeapSet
+
 
 TTCContext = namedtuple('TTCContext', ['prefs',  # Starts as input prefs, but elements popped as agents trades
                                        'ends',  # Starts as input ends, but elements popped as agents trade
@@ -37,6 +38,8 @@ def ttc(prefs, ends, priority):
         _iteratively_remove_sinks(ctx)
 
         F = _subgraph(ctx, priority)
+
+        _record_persistences(ctx, F)
 
         _trade(ctx, F)
 
@@ -229,22 +232,22 @@ def _sat_select(F, L, G, agent_priority):
     unlabeled vertices that are adjacent to labeled vertices.
     """
     UL = set(G.keys()).difference(L)
-    AL = Fibonacci_heap()  # Adjacent to labeled
+    AL = HeapSet(agent_priority)  # Adjacent to labeled
     reverse_G = _reverse_graph(G)
     while UL:
-        _collect_adjacent_to_labeled(AL, reverse_G, L, agent_priority)
-        a = AL.dequeue_min().get_value()
+        _collect_adjacent_to_labeled(AL, reverse_G, L)
+        a = AL.pop()
         labeled_adjacent_to_a = filter(lambda adj_to_a: adj_to_a in L, G[a])
         F[a] = min(labeled_adjacent_to_a, key=agent_priority)
         L.add(a)
         UL.remove(a)
 
 
-def _collect_adjacent_to_labeled(AL, reverse_G, L, priority):
+def _collect_adjacent_to_labeled(AL, reverse_G, L):
     for labeled in L:
         for a in reverse_G[labeled]:
             if a not in L:
-                AL.enqueue(a, priority=priority(a))
+                AL.add(a)
 
 
 def _first_reachable_U(F, ctx):

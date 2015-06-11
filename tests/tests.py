@@ -17,50 +17,6 @@ def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
     )
 
 
-class SimpleCaseTest(unittest.TestCase):
-
-    def setUp(self):
-        self.prefs = {
-            'a0': [['o1', 'o2']],
-            'a1': [['o0'], ['o2'], ['o1']],
-            'a2': [['o0'], ['o1'], ['o2']]
-        }
-        self.ends = {a: ['o{}'.format(i)] for i, a in enumerate(sorted(self.prefs.keys()))}
-        self.priority = {'o{}'.format(i): i for i in range(len(self.prefs))}
-
-    def test_simple_case(self):
-        alloc = ttc.ttc(self.prefs, self.ends, self.priority)
-
-        self.assertEqual(alloc['a0'], ['o2'])
-        self.assertEqual(alloc['a1'], ['o0'])
-        self.assertEqual(alloc['a2'], ['o1'])
-
-
-class MainTest(unittest.TestCase):
-    def setUp(self):
-        self.prefs = {'a1': [['o1', 'o2']], 'a2': [['o1'], ['o2']]}
-        self.ends = {'a1': ['o1'], 'a2': ['o2']}
-        self.priority = {'o1': 1, 'o2': 2}
-
-    def test_returns_alloc(self):
-        ends = self.ends.copy()
-        alloc = ttc.ttc(self.prefs, self.ends, self.priority)
-
-        # Every agent gets an endowment
-        self.assertEqual(alloc.keys(), ends.keys())
-
-        # Every agent gets as many allocated as he was endowed with
-        for a in self.ends:
-            self.assertEqual(len(alloc[a]), len(self.ends[a]))
-
-        # for each pair of agents a and b, if o is allocated to a, it's not allocated to b
-        for a in self.ends:
-            for b in self.ends:
-                if b != a:
-                    for o in alloc[a]:
-                        self.assertNotIn(o, alloc[b])
-
-
 class UpdateEndsTest(unittest.TestCase):
     def setUp(self):
         self.ctx = new_context(
@@ -374,4 +330,68 @@ class TradeTest(unittest.TestCase):
             5: 'd'
         }
         self.assertEqual(expected_curr_ends, ctx.curr_ends)
+
+
+class TTCTest(unittest.TestCase):
+    def test_simple_case(self):
+        prefs = {
+            'a0': [['o1', 'o2']],
+            'a1': [['o0'], ['o2'], ['o1']],
+            'a2': [['o0'], ['o1'], ['o2']]
+        }
+        ends = {a: ['o{}'.format(i)] for i, a in enumerate(sorted(prefs.keys()))}
+        priority = {'o{}'.format(i): i for i in range(len(prefs))}
+
+        alloc = ttc.ttc(prefs, ends, priority)
+
+        self.assertEqual(alloc['a0'], ['o2'])
+        self.assertEqual(alloc['a1'], ['o0'])
+        self.assertEqual(alloc['a2'], ['o1'])
+
+    def test_returns_alloc(self):
+        prefs = {'a1': [['o1', 'o2']], 'a2': [['o1'], ['o2']]}
+        ends = {'a1': ['o1'], 'a2': ['o2']}
+        priority = {'o1': 1, 'o2': 2}
+
+        ends_keys = set(ends.keys())
+        alloc = ttc.ttc(prefs, ends, priority)
+
+        # Every agent gets an endowment
+        self.assertEqual(set(alloc.keys()), ends_keys)
+
+        # Every agent gets as many allocated as he was endowed with
+        for a in ends:
+            self.assertEqual(len(alloc[a]), len(ends[a]))
+
+        # for each pair of agents a and b, if o is allocated to a, it's not allocated to b
+        for a in ends:
+            for b in ends:
+                if b != a:
+                    for o in alloc[a]:
+                        self.assertNotIn(o, alloc[b])
+
+    def test_example_from_sethuraman_saban(self):
+        """This is the example on page 21 of SS"""
+        prefs = {
+            1: [['a', 'c']],
+            2: [['a', 'b', 'd']],
+            3: [['c', 'e']],
+            4: [['c']],
+            5: [['a', 'f']],
+            6: [['b']]
+        }
+        ends = {i: [o] for i, o in zip(range(1, 7), list('abcdef'))}
+        priority = dict(zip(list('abcdef'), range(1, 7)))
+        alloc = ttc.ttc(prefs, ends, priority)
+        expected_alloc = {
+            1: ['a'],
+            2: ['d'],
+            3: ['e'],
+            4: ['c'],
+            5: ['f'],
+            6: ['b']
+        }
+        self.assertEqual(expected_alloc, alloc)
+
+
 
