@@ -4,17 +4,21 @@ from tarjan import tarjan
 from heap_set import HeapSet
 
 
-TTCContext = namedtuple('TTCContext', ['prefs',  # Starts as input prefs, but elements popped as agents trades
-                                       'ends',  # Starts as input ends, but elements popped as agents trade
-                                       'curr_ends',  # Single endowment for current round
-                                       'curr_prefs',  # Preferences over endowments for current round
-                                       'G',  # TTC graph for current round
-                                       'persistence_test',  # A function that returns a boolean for each agent to
-                                                            # determine persistence.
-                                       'U',  # Set of unsatisfied agents in current round
-                                       'alloc',  # The final allocation
-                                       'X'  # First reachable unsatisfied agent
-                                       ])
+TTCContext = namedtuple(
+    'TTCContext',
+    [
+        'prefs',  # Starts as input prefs, but elements popped as agents trades
+        'ends',  # Starts as input ends, but elements popped as agents trade
+        'curr_ends',  # Single endowment for current round
+        'curr_prefs',  # Preferences over endowments for current round
+        'G',  # TTC graph for current round
+        'persistence_test',  # A function that returns a boolean for each agent to determine
+                             # persistence.
+        'U',  # Set of unsatisfied agents in current round
+        'alloc',  # The final allocation
+        'X'  # First reachable unsatisfied agent
+    ]
+    )
 
 
 def ttc(prefs, ends, priority):
@@ -49,8 +53,9 @@ def ttc(prefs, ends, priority):
 
 def _update_ends(ctx):
     """
-    For each agent with an endowment in ctx.ends but not in ctx.curr_ends, pop the first element of his ctx.ends.
-    If there isn't anything there, you need to do some housekeeping: delete him from ctx.prefs, delete him from ctx.ends
+    For each agent with an endowment in ctx.ends but not in ctx.curr_ends, pop the first element of
+    his ctx.ends. If there isn't anything there, you need to do some housekeeping: delete him from
+    ctx.prefs, delete him from ctx.ends
     """
     to_delete = []
     for a in ctx.ends:
@@ -81,7 +86,8 @@ def _get_curr_prefs(ctx):
     """
     Return the restriction of each agent's preference to curr_ends.
     """
-    end_set = reduce(lambda x, y: x.union({y}), ctx.curr_ends.values(), set({}))  # all possible endowments
+    # all possible endowments
+    end_set = reduce(lambda x, y: x.union({y}), ctx.curr_ends.values(), set({}))
     for a, p in ctx.prefs.items():
         ctx.curr_prefs[a] = _get_curr_agent_prefs(p, end_set)
 
@@ -93,7 +99,7 @@ def _build_ttc_graph(ctx):
     ctx.G.clear()
 
     for a, p in ctx.curr_prefs.items():
-        ctx.G[a] = list(map(lambda e: reverse_ends[e], ctx.curr_prefs[a][0]))  # couldn't you just use p[0] instead of ctx.curr_prefs[a][0]?
+        ctx.G[a] = list(map(lambda e: reverse_ends[e], p[0]))
 
 
 def _add_to_U(a, ctx):
@@ -157,7 +163,8 @@ def _remove_terminal_sinks(ctx):
                 #  make assignment:
                 #  remove curr_pref[a], G[a], curr_end[a]
                 #  add alloc[a]
-                #  NB. _update_ends() takes care of ends[a] and prefs[a] so don't worry about it here
+                #  NB. _update_ends() takes care of ends[a] and prefs[a] so don't worry about
+                #  it here
                 alloc = ctx.curr_ends[a]
                 if a in ctx.alloc:
                     ctx.alloc[a].append(alloc)
@@ -208,10 +215,10 @@ def _reverse_graph(G):
     return reverse_G
 
 
-def _U_select(F, L, U, G,  agent_priority):
+def _U_select(F, L, U, G, agent_priority):
     """
-    updates F for members of U so that there's an edge to each member's highest priority neighbor in G
-    agent_priority is a function mapping agents to their endowment's priority
+    updates F for members of U so that there's an edge to each member's highest priority neighbor
+    in G agent_priority is a function mapping agents to their endowment's priority
     """
     for u in U:
         F[u] = min(G[u], key=agent_priority)
@@ -228,8 +235,8 @@ def _persistence_select(F, L, persistence_test):
 
 def _sat_select(F, L, G, agent_priority):
     """
-    Keep sets of labeled (who have an out edge in F) and unlabeled vertices of F. Label each vertex by labeling
-    unlabeled vertices that are adjacent to labeled vertices.
+    Keep sets of labeled (who have an out edge in F) and unlabeled vertices of F. Label each
+    vertex by labeling unlabeled vertices that are adjacent to labeled vertices.
     """
     UL = set(G.keys()).difference(L)
     AL = HeapSet(agent_priority)  # Adjacent to labeled
@@ -278,7 +285,8 @@ def _record_persistences(ctx, F):
 
 def _persistence(ctx, F, a, end):
     """
-    Returns a function that returns F[a] if the first reachable unsatisfied agent in F still holds end
+    Returns a function that returns F[a] if the first reachable unsatisfied agent in F still
+    holds end
     """
     return lambda: F[a] if ctx.curr_ends[ctx.X[a]] == end else None
 
@@ -293,8 +301,9 @@ def _trade(ctx, F):
 
     for cycle in cycles:
         last_end = ctx.curr_ends[cycle[-1]]
-        if len(cycle) > 1:  # Tarjan finds SCCs. With out degree of 1 for every vertex, if len(cycle) == 1,
-                            # it's not a cycle
+        if len(cycle) > 1:
+            # Tarjan finds SCCs. With out degree of 1 for every vertex, if len(cycle) == 1,
+            # it's not a cycle
             for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
                 ctx.curr_ends[a] = ctx.curr_ends[b]
             ctx.curr_ends[cycle[0]] = last_end
