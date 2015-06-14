@@ -1,9 +1,30 @@
+"""
+This module extends the Highest Priority Object TTC algorithm as defined in Saban and
+Sethuraman (http://bit.ly/1B9Hmvi) to allow multiple endowments.
+
+TTC takes, as arguments, preferences, endowments, and priority.
+
+Preferences are provided as a dict with agent as keys and list of lists of endowments as
+values. Each element of the preference list is an indifference class. So [['a'], ['b','c'],['d']]
+represents a preference where 'a' is best, 'b' and 'c' are next best (and indifferent), and 'd' is
+worst.
+
+Endowments are provided as a dict with agents as keys and lists of endowments as values.
+
+Priority is a dict with endowments as keys numeric values.
+
+TODO: provide a conflict checker to avoid clashing endowments being assigned to agent
+"""
 from collections import namedtuple
 from functools import reduce
 from tarjan import tarjan
 from heap_set import HeapSet
 
 
+__all__ = ['ttc']
+
+
+""" Context passed to subroutines of TTC """
 TTCContext = namedtuple(
     'TTCContext',
     [
@@ -22,6 +43,47 @@ TTCContext = namedtuple(
 
 
 def ttc(prefs, ends, priority):
+    """
+    :param prefs: dict with agents as keys and lists of lists of endowments as values
+    Example:
+    {
+    'agent 1': [['endowment 1'], ['endowment 2', 'endowment 3'], ['endowment 4']],
+    'agent 2': [['endowment 3'], ['endowment 1']],
+    'agent 3': [['endowment 3', 'endowment 1', 'endowment 2']]
+    }
+
+    :param ends: dict with agents as keys and lists of endowments as values
+    Example:
+    {
+    'agent 1': ['endowment 1', 'endowment 2'],
+    'agent 2': ['endowment 3', 'endowment 4', 'endowment 15'],
+    'agent 3': ['endowment 8']
+    }
+    NB. No endowment should appear in the list of more than one agent.
+    :param priority: dict with endowments as keys and numerical values
+     {'endowment 1': 3, 'endowment 3': 5, 'endowment 2': 3.4, ... }
+     NB. Each value in ends has to be a key in priority
+    :return: a dict with agents as keys and lists of endowments as values
+    Example:
+    {
+    'agent 1': ['endowment 8', 'endowment 4'],
+    'agent 2': ['endowment 1', 'endowment 3', 'endowment 2'],
+    'agent 3': ['endowment 15']
+    }
+    This will be computed according to an adaptation of the HPO TTC algorithm. The change
+    from Saban and Sethuraman is an adaptation to allow multiple endowments.
+
+    Each agent is allocated exactly as many items as he is endowed with. We modify the
+    HPO TTC algorithm by having agents trade their endowments one at a time. So in the
+    above listed example for ends, we would start with a single endowment input where
+    agent 1 starts with endowment 1, agent 2 starts with endowment 3, and agent 3 starts
+    with endowment 8.
+
+    TO DO: add a fourth parameter conflict which is a boolean valued function that takes
+    two endowments as input and returns True only when the two endowments are incompatible
+    (i.e. no agent can be assigned both of endowments). We could easily make this function
+    take a third argument to make it agent specific.
+    """
     ctx = TTCContext(
         prefs=prefs,
         ends=ends,
