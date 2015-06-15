@@ -1,19 +1,20 @@
+# pylint: disable=missing-docstring,too-many-arguments,protected-access
 import unittest
 import ttc
 
 
-def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, G=None,
-                persistence_test=None, U=set({}), alloc=None, X=None):
+def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, graph=None,
+                persistence_test=None, unsat=None, alloc=None, reachable_unsat=None):
     return ttc.TTCContext(
         prefs=prefs or {},
         curr_ends=curr_ends or {},
         ends=ends or {},
         curr_prefs=curr_prefs or {},
-        G=G or {},
+        graph=graph or {},
         persistence_test=persistence_test or {},
-        U=U,
+        unsat=unsat or set({}),
         alloc=alloc or {},
-        X=X or {}
+        reachable_unsat=reachable_unsat or {}
     )
 
 
@@ -29,7 +30,8 @@ class UpdateEndsTest(unittest.TestCase):
         )
 
     def test_update_ends_doesnt_touch_existing_endowments(self):
-        self.ctx.curr_ends['a1'] = -1  # This could be the case if we've popped -1 previously. This should remain
+        self.ctx.curr_ends['a1'] = -1  # This could be the case if we've popped -1 previously.
+                                       # This should remain
         ttc._update_ends(self.ctx)
         self.assertEqual(self.ctx.curr_ends['a1'], -1)
 
@@ -82,24 +84,24 @@ class BuildGraphTest(unittest.TestCase):
         ctx = new_context(curr_prefs=prefs, curr_ends=curr_ends)
 
         ttc._build_ttc_graph(ctx)
-        self.assertEqual({'a1', 'a2'}, set(ctx.G['a0']))
-        self.assertEqual({'a0'}, set(ctx.G['a1']))
-        self.assertEqual({'a0'}, set(ctx.G['a2']))
-        self.assertEqual({'a3'}, set(ctx.G['a3']))
+        self.assertEqual({'a1', 'a2'}, set(ctx.graph['a0']))
+        self.assertEqual({'a0'}, set(ctx.graph['a1']))
+        self.assertEqual({'a0'}, set(ctx.graph['a2']))
+        self.assertEqual({'a3'}, set(ctx.graph['a3']))
 
 
 class SinkAnalysisTest(unittest.TestCase):
     def test_get_sinks(self):
-        G={
+        graph = {
             'a': ['a'],
             'b': ['a'],
             'c': ['c', 'b']
         }
         expected_sinks = [['a']]
-        sinks = ttc._get_sinks(G)
+        sinks = ttc._get_sinks(graph)
         self.assertEqual(sinks, expected_sinks)
 
-    def test_doesnt_find_terminal_sink_with_everyone_in_U(self):
+    def test_doesnt_find_terminal_sink_with_everyone_in_unsat(self):
         ctx = new_context(
             prefs={
                 'a': [[1]],
@@ -111,8 +113,8 @@ class SinkAnalysisTest(unittest.TestCase):
                 'a': [[1]],
                 'b': [[0]]
             },
-            G={'a': ['b'], 'b': ['a']},
-            U={'a', 'b'}
+            graph={'a': ['b'], 'b': ['a']},
+            unsat={'a', 'b'}
         )
         self.assertFalse(ttc._remove_terminal_sinks(ctx))
 
@@ -128,20 +130,20 @@ class SinkAnalysisTest(unittest.TestCase):
                 'a': [[0, 1]],
                 'b': [[0, 1]]
             },
-            G={'a': ['a', 'b'], 'b': ['a', 'b']},
-            U=set({})
+            graph={'a': ['a', 'b'], 'b': ['a', 'b']},
+            unsat=set({})
         )
 
         self.assertTrue(ttc._remove_terminal_sinks(ctx))
         self.assertEqual(ctx.alloc['a'], [0])
         self.assertEqual(ctx.alloc['b'], [1])
-        self.assertNotIn('a', ctx.G)
+        self.assertNotIn('a', ctx.graph)
         self.assertNotIn('a', ctx.curr_prefs)
         self.assertNotIn('a', ctx.curr_ends)
 
     def test_iterative_sink_removal(self):
         prefs = {
-            'a{}'.format(i): list(map(lambda x: [x], range(i+1))) for i in range(5)
+            'a{}'.format(i): [[x] for x in range(i+1)] for i in range(5)
         }
         ends = {'a{}'.format(i): [i] for i in range(5)}
         ctx = new_context(
@@ -156,8 +158,8 @@ class SinkAnalysisTest(unittest.TestCase):
         self.assertEqual(ctx.curr_prefs, {})
         self.assertEqual(ctx.ends, {})
         self.assertEqual(ctx.curr_ends, {})
-        self.assertEqual(ctx.G, {})
-        self.assertEqual(ctx.U, set({}))
+        self.assertEqual(ctx.graph, {})
+        self.assertEqual(ctx.unsat, set({}))
 
     def test_scrub_from_curr_prefs(self):
         curr_prefs = {'a1': [['a', 'b', 'c'], ['d'], ['f']]}
@@ -177,14 +179,14 @@ class UnsatisfiedTest(unittest.TestCase):
                 },
             )
         ttc._collect_unsatisfied(ctx)
-        self.assertIn('a', ctx.U)
-        self.assertNotIn('b', ctx.U)
+        self.assertIn('a', ctx.unsat)
+        self.assertNotIn('b', ctx.unsat)
 
 
 class SubgraphTest(unittest.TestCase):
     def setUp(self):
         self.ctx = new_context(
-            G={
+            graph={
                 1: [1, 3],
                 2: [4, 2, 1],
                 3: [5, 3],
@@ -192,9 +194,9 @@ class SubgraphTest(unittest.TestCase):
                 5: [1, 6],
                 6: [2]
                 },
-            U={4, 5, 6},
+            unsat={4, 5, 6},
             curr_ends=dict(zip(range(1, 7), 'abcdef')),
-            X={
+            reachable_unsat={
                 1: 5,
                 2: 4,
                 3: 5,
@@ -206,7 +208,7 @@ class SubgraphTest(unittest.TestCase):
         self.priority = dict(zip('abcdef', range(1, 7)))
 
     def test_subgraph_picks_single_edge_for_each_node(self):
-        F = ttc._subgraph(self.ctx, self.priority)
+        graph_selection = ttc._subgraph(self.ctx, self.priority)
         expected_subgraph = {
             1: 3,
             2: 4,
@@ -215,10 +217,10 @@ class SubgraphTest(unittest.TestCase):
             5: 1,
             6: 2
         }
-        self.assertEqual(F, expected_subgraph)
+        self.assertEqual(graph_selection, expected_subgraph)
 
     def test_reverse_graph(self):
-        reverse_G = {
+        reverse_graph = {
             1: {2, 5, 1},
             2: {2, 6},
             3: {1, 3, 4},
@@ -226,31 +228,31 @@ class SubgraphTest(unittest.TestCase):
             5: {3},
             6: {5}
         }
-        self.assertEqual(reverse_G, ttc._reverse_graph(self.ctx.G))
+        self.assertEqual(reverse_graph, ttc._reverse_graph(self.ctx.graph))
 
-    def test_U_select(self):
+    def test_unsat_select(self):
         agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
-        F = {}
-        L = set({})
-        ttc._unsat_select(F, L, self.ctx.U, self.ctx.G, agent_priority)
-        expected_F = {
+        graph_selection = {}
+        labeled = set({})
+        ttc._unsat_select(graph_selection, labeled, self.ctx.unsat, self.ctx.graph, agent_priority)
+        expected_graph_selection = {
             4: 3,
             5: 1,
             6: 2
         }
-        self.assertEqual(F, expected_F)
-        self.assertIn(4, L)
+        self.assertEqual(graph_selection, expected_graph_selection)
+        self.assertIn(4, labeled)
 
     def test_sat_select(self):
         agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
-        F = {
+        graph_selection = {
             4: 3,
             5: 1,
             6: 2
         }
-        L = self.ctx.U.copy()
-        ttc._sat_select(F, L, self.ctx.G, agent_priority)
-        expected_F = {
+        labeled = self.ctx.unsat.copy()
+        ttc._sat_select(graph_selection, labeled, self.ctx.graph, agent_priority)
+        expected_graph_selection = {
             1: 3,
             2: 4,
             3: 5,
@@ -258,11 +260,11 @@ class SubgraphTest(unittest.TestCase):
             5: 1,
             6: 2
         }
-        self.assertEqual(F, expected_F)
-        self.assertIn(1, L)
+        self.assertEqual(graph_selection, expected_graph_selection)
+        self.assertIn(1, labeled)
 
-    def test_first_reachable_U(self):
-        F = {
+    def test_first_reachable_unsat(self):
+        graph_selection = {
             1: 3,
             2: 4,
             3: 5,
@@ -270,8 +272,8 @@ class SubgraphTest(unittest.TestCase):
             5: 1,
             6: 2
         }
-        ttc._first_reachable_unsat(F, self.ctx)
-        expected_X = {
+        ttc._first_reachable_unsat(graph_selection, self.ctx)
+        expected_reachable_unsat = {
             1: 5,
             2: 4,
             3: 5,
@@ -279,10 +281,10 @@ class SubgraphTest(unittest.TestCase):
             5: 5,
             6: 4
         }
-        self.assertEqual(self.ctx.X, expected_X)
+        self.assertEqual(self.ctx.reachable_unsat, expected_reachable_unsat)
 
     def test_persistence(self):
-        F = {
+        graph_selection = {
             1: 3,
             2: 4,
             3: 5,
@@ -290,7 +292,7 @@ class SubgraphTest(unittest.TestCase):
             5: 1,
             6: 2
         }
-        ttc._record_persistences(self.ctx, F)
+        ttc._record_persistences(self.ctx, graph_selection)
         # change 5's endowment and there shouldn't be persistence for 1, 3, or 4
         self.ctx.curr_ends[5] = 'a'
         self.assertIsNone(self.ctx.persistence_test[1]())
@@ -300,13 +302,13 @@ class SubgraphTest(unittest.TestCase):
     def test_persistence_select(self):
         self.ctx.persistence_test[1] = lambda: 2
         self.ctx.persistence_test[2] = lambda: None
-        L = set({})
-        F = {}
-        ttc._persistence_select(F, L, self.ctx.persistence_test)
-        self.assertEqual(F[1], 2)
-        self.assertNotIn(2, F)
-        self.assertIn(1, L)
-        self.assertNotIn(2, L)
+        labeled = set({})
+        graph_selection = {}
+        ttc._persistence_select(graph_selection, labeled, self.ctx.persistence_test)
+        self.assertEqual(graph_selection[1], 2)
+        self.assertNotIn(2, graph_selection)
+        self.assertIn(1, labeled)
+        self.assertNotIn(2, labeled)
 
 
 class TradeTest(unittest.TestCase):
@@ -314,14 +316,14 @@ class TradeTest(unittest.TestCase):
         ctx = new_context(
             curr_ends=dict(zip(range(1, 6), 'abcde'))
         )
-        F = {
+        graph_selection = {
             1: 2,
             2: 3,
             3: 1,
             4: 5,
             5: 4,
         }
-        ttc._trade(ctx, F)
+        ttc._trade(ctx, graph_selection)
         expected_curr_ends = {
             1: 'b',
             2: 'c',
@@ -360,15 +362,16 @@ class TTCTest(unittest.TestCase):
         self.assertEqual(set(alloc.keys()), ends_keys)
 
         # Every agent gets as many allocated as he was endowed with
-        for a in ends:
-            self.assertEqual(len(alloc[a]), len(ends[a]))
+        for agent in ends:
+            self.assertEqual(len(alloc[agent]), len(ends[agent]))
 
-        # for each pair of agents a and b, if o is allocated to a, it's not allocated to b
-        for a in ends:
-            for b in ends:
-                if b != a:
-                    for o in alloc[a]:
-                        self.assertNotIn(o, alloc[b])
+        # for each pair of agents, if endowment is allocated to agent_1,
+        # it's not allocated to agent_2
+        for agent_1 in ends:
+            for agent_2 in ends:
+                if agent_2 != agent_1:
+                    for endowment in alloc[agent_1]:
+                        self.assertNotIn(endowment, alloc[agent_2])
 
     def test_example_from_sethuraman_saban(self):
         """This is the example on page 21 of SS"""
@@ -436,7 +439,7 @@ class TTCTest(unittest.TestCase):
             10: [['a', 'b', 'j']],
             11: [['e', 'i', 'k']]
         }
-        ends = {a: [e] for a,e in dict(zip(range(1, 12), list('abcdefghijk'))).items()}
+        ends = {a: [e] for a, e in dict(zip(range(1, 12), list('abcdefghijk'))).items()}
         priority = dict(zip(list('abcdefghijk'), range(1, 12)))
 
         alloc = ttc.ttc(prefs, ends, priority)

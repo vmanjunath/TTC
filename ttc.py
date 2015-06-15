@@ -32,12 +32,12 @@ TTCContext = namedtuple(
         'ends',  # Starts as input ends, but elements popped as agents trade
         'curr_ends',  # Single endowment for current round
         'curr_prefs',  # Preferences over endowments for current round
-        'G',  # TTC graph for current round
+        'graph',  # TTC graph for current round
         'persistence_test',  # A function that returns a boolean for each agent to determine
                              # persistence.
-        'U',  # Set of unsatisfied agents in current round
+        'unsat',  # Set of unsatisfied agents in current round
         'alloc',  # The final allocation
-        'X'  # First reachable unsatisfied agent
+        'reachable_unsat'  # First reachable unsatisfied agent
     ]
     )
 
@@ -89,11 +89,11 @@ def ttc(prefs, ends, priority):
         ends=ends,
         curr_ends={},
         curr_prefs={},
-        G={},
+        graph={},
         persistence_test={},
-        U=set({}),
+        unsat=set({}),
         alloc={},
-        X={}
+        reachable_unsat={}
     )
     while ctx.prefs:
         _update_ends(ctx)
@@ -110,7 +110,6 @@ def ttc(prefs, ends, priority):
         _trade(ctx, graph_selection)
 
     return ctx.alloc
-
 
 
 def _update_ends(ctx):
@@ -169,21 +168,21 @@ def _build_ttc_graph(ctx):
     # need reverse relationship between endowments and agents
     reverse_ends = {end: a for a, end in ctx.curr_ends.items()}
 
-    ctx.G.clear()
+    ctx.graph.clear()
 
     for agent, pref in ctx.curr_prefs.items():
-        ctx.G[agent] = [reverse_ends[endowment] for endowment in pref[0]]
+        ctx.graph[agent] = [reverse_ends[endowment] for endowment in pref[0]]
 
 
 def _add_to_unsat(agent, ctx):
     """ Add agent to unsatisfied set if he's not satisfied """
     if ctx.curr_ends[agent] not in ctx.curr_prefs[agent][0]:
-        ctx.U.add(agent)
+        ctx.unsat.add(agent)
 
 
 def _collect_unsatisfied(ctx):
     """ Clear and repopulate the current unsatisfied set """
-    ctx.U.clear()
+    ctx.unsat.clear()
     for agent in ctx.curr_ends:
         _add_to_unsat(agent, ctx)
 
@@ -207,7 +206,7 @@ def _get_sinks(graph):
 
 def _is_terminal(sink, ctx):
     """ A sink is terminal if no vertex in it is an unsatisfied agent """
-    return reduce(lambda x, a: x and a not in ctx.U, sink, True)
+    return reduce(lambda x, a: x and a not in ctx.unsat, sink, True)
 
 
 def _scrub_from_curr_prefs(ctx, endowment):
@@ -233,7 +232,7 @@ def _remove_terminal_sinks(ctx):
     """
     found_terminal_sink = False
 
-    sinks = _get_sinks(ctx.G)
+    sinks = _get_sinks(ctx.graph)
 
     for sink in sinks:
         if _is_terminal(sink, ctx):
@@ -250,7 +249,7 @@ def _remove_terminal_sinks(ctx):
                 else:
                     ctx.alloc[agent] = [alloc]
                 del ctx.curr_ends[agent]  # remove it from the problem
-                del ctx.G[agent]
+                del ctx.graph[agent]
                 del ctx.curr_prefs[agent]
                 # Now you have to remove alloc from everyone else's curre_prefs
                 _scrub_from_curr_prefs(ctx, alloc)
@@ -275,15 +274,15 @@ def _iteratively_remove_sinks(ctx):
 
 
 def _subgraph(ctx, priority):
-    """ Selects a subgraph of ctx.G so that every vertex has exactly one out edge.
+    """ Selects a subgraph of ctx.graph so that every vertex has exactly one out edge.
      This subgraph is calculated according to the HPO TTC described by Saban and Sethuraman"""
     agent_priority = _agent_priority(ctx, priority)
     graph_selection = {}
     labeled = set({})
     if ctx.persistence_test:
         _persistence_select(graph_selection, labeled, ctx.persistence_test)
-    _unsat_select(graph_selection, labeled, ctx.U, ctx.G, agent_priority)
-    _sat_select(graph_selection, labeled, ctx.G, agent_priority)
+    _unsat_select(graph_selection, labeled, ctx.unsat, ctx.graph, agent_priority)
+    _sat_select(graph_selection, labeled, ctx.graph, agent_priority)
     return graph_selection
 
 
@@ -357,24 +356,24 @@ def _collect_adjacent_to_labeled(adjacent_to_labeled, reverse_graph, labeled):
 def _first_reachable_unsat(graph_selection, ctx):
     """ Given a context and a graph selection, update the context's X to map each agent to
     his first reachable unsatisfied agent."""
-    ctx.X.clear()
+    ctx.reachable_unsat.clear()
     verts = set(graph_selection.keys())
     while verts:
         curr_vert = verts.pop()
         path = [curr_vert]
         curr_vert = graph_selection[curr_vert]
-        while curr_vert not in ctx.U and curr_vert not in ctx.X:
+        while curr_vert not in ctx.unsat and curr_vert not in ctx.reachable_unsat:
             path.append(curr_vert)
             curr_vert = graph_selection[curr_vert]
             assert curr_vert not in path  # If this fails, we're going in circles and shouldn't be.
         for vert in path:
-            if curr_vert in ctx.U:
-                ctx.X[vert] = curr_vert
+            if curr_vert in ctx.unsat:
+                ctx.reachable_unsat[vert] = curr_vert
             else:
-                ctx.X[vert] = ctx.X[curr_vert]
+                ctx.reachable_unsat[vert] = ctx.reachable_unsat[curr_vert]
             if vert in verts:
                 verts.remove(vert)
-    return ctx.X
+    return ctx.reachable_unsat
 
 
 def _record_persistences(ctx, graph_selection):
@@ -382,9 +381,9 @@ def _record_persistences(ctx, graph_selection):
     function that either returns the first unsatisfied agent reachable from that vertex _if_ that
     agent is still unsatisfied and None otherwise.
     """
-    for vertex in ctx.X.keys():
+    for vertex in ctx.reachable_unsat.keys():
         ctx.persistence_test[vertex] = _persistence(ctx, graph_selection, vertex,
-                                                    ctx.curr_ends[ctx.X[vertex]])
+                                                    ctx.curr_ends[ctx.reachable_unsat[vertex]])
 
 
 def _persistence(ctx, graph_selection, vertex, end):
@@ -393,7 +392,8 @@ def _persistence(ctx, graph_selection, vertex, end):
     reachable from vertex holds the same endowment as he currently does. The function returns
     None otherwise.
     """
-    return lambda: graph_selection[vertex] if ctx.curr_ends[ctx.X[vertex]] == end else None
+    return lambda: graph_selection[vertex] if \
+        ctx.curr_ends[ctx.reachable_unsat[vertex]] == end else None
 
 
 def _trade(ctx, graph_selection):
