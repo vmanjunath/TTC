@@ -103,11 +103,11 @@ def ttc(prefs, ends, priority):
 
         _iteratively_remove_sinks(ctx)
 
-        F = _subgraph(ctx, priority)
+        graph_selection = _subgraph(ctx, priority)
 
-        _record_persistences(ctx, F)
+        _record_persistences(ctx, graph_selection)
 
-        _trade(ctx, F)
+        _trade(ctx, graph_selection)
 
     return ctx.alloc
 
@@ -120,26 +120,32 @@ def _update_ends(ctx):
     ctx.prefs, delete him from ctx.ends
     """
     to_delete = []
-    for a in ctx.ends:
-        if a not in ctx.curr_ends:
+    for agent in ctx.ends:
+        if agent not in ctx.curr_ends:
             try:
-                endowment = ctx.ends[a].pop(0)
-                ctx.curr_ends[a] = endowment
+                endowment = ctx.ends[agent].pop(0)
+                ctx.curr_ends[agent] = endowment
             except IndexError:
-                to_delete.append(a)
+                to_delete.append(agent)
 
-    for a in to_delete:
-        del ctx.ends[a]
-        del ctx.prefs[a]
+    for agent in to_delete:
+        del ctx.ends[agent]
+        del ctx.prefs[agent]
 
 
 def _get_curr_agent_prefs(pref, end_set):
-    # TODO: filter out objects that conflict with other endowments or allocs from preferences
+    """
+    Takes a single agents preferences and the set of available endowments and returns a
+    'cleaned up' version of the input preference by filtering out any endowment that isn't
+    in end_set
+    TODO: filter out objects that conflict with other endowments or allocs from preferences
+    """
     clean_pref = []
-    for ic in pref:
-        clean_ic = list(filter(lambda x: x in end_set, ic))
-        if clean_ic:
-            clean_pref.append(ic)
+    for indifference_class in pref:
+        clean_indifference_class = [endowment for endowment in indifference_class
+                                    if endowment in end_set]
+        if clean_indifference_class:
+            clean_pref.append(indifference_class)
 
     return clean_pref
 
@@ -150,61 +156,72 @@ def _get_curr_prefs(ctx):
     """
     # all possible endowments
     end_set = reduce(lambda x, y: x.union({y}), ctx.curr_ends.values(), set({}))
-    for a, p in ctx.prefs.items():
-        ctx.curr_prefs[a] = _get_curr_agent_prefs(p, end_set)
+    for agent, pref in ctx.prefs.items():
+        ctx.curr_prefs[agent] = _get_curr_agent_prefs(pref, end_set)
 
 
 def _build_ttc_graph(ctx):
+    """
+    Given a context that specifies current endowments and preferences, clears the current graph
+    and replaces it with a graph with an edge from every agent to every agent who owns one of his
+    most preferred objects.
+    """
     # need reverse relationship between endowments and agents
     reverse_ends = {end: a for a, end in ctx.curr_ends.items()}
 
     ctx.G.clear()
 
-    for a, p in ctx.curr_prefs.items():
-        ctx.G[a] = list(map(lambda e: reverse_ends[e], p[0]))
+    for agent, pref in ctx.curr_prefs.items():
+        ctx.G[agent] = [reverse_ends[endowment] for endowment in pref[0]]
 
 
-def _add_to_U(a, ctx):
-    # Add a to unsatisfied set if he's not satisfied
-    if ctx.curr_ends[a] not in ctx.curr_prefs[a][0]:
-        ctx.U.add(a)
+def _add_to_unsat(agent, ctx):
+    """ Add agent to unsatisfied set if he's not satisfied """
+    if ctx.curr_ends[agent] not in ctx.curr_prefs[agent][0]:
+        ctx.U.add(agent)
 
 
 def _collect_unsatisfied(ctx):
+    """ Clear and repopulate the current unsatisfied set """
     ctx.U.clear()
-    for a in ctx.curr_ends:
-        _add_to_U(a, ctx)
+    for agent in ctx.curr_ends:
+        _add_to_unsat(agent, ctx)
 
 
-def _is_sink(scc, G):
-    for v in scc:
-        for w in G[v]:
-            if w not in scc:
+def _is_sink(scc, graph):
+    """ Given a subset of vertices in graph returns True if there are no edges out of scc"""
+    for vertex in scc:
+        for neighbor in graph[vertex]:
+            if neighbor not in scc:
                 return False
     return True
 
+def _get_sinks(graph):
+    """ Run Tarjan's algorithm to find all strongly connected components of graph """
+    sccs = tarjan(graph)
+    sinks = [scc for scc in sccs if _is_sink(scc, graph)]
+    # TODO: figure out if it's ever reasonable for sinks to be empty.
 
-def _get_sinks(G):
-    sccs = tarjan(G)
-    return list(filter(lambda scc: _is_sink(scc, G), sccs))
+    return sinks
 
 
 def _is_terminal(sink, ctx):
+    """ A sink is terminal if no vertex in it is an unsatisfied agent """
     return reduce(lambda x, a: x and a not in ctx.U, sink, True)
 
 
-def _scrub_from_curr_prefs(ctx, alloc):
-    for a, p in ctx.curr_prefs.items():
-        blank_ic = False
-        for ic in p:
-            if alloc in ic:
-                ic.remove(alloc)
-                if not ic:
-                    blank_ic = True
+def _scrub_from_curr_prefs(ctx, endowment):
+    """ remove all occurrences of endowment from the current preferences """
+    for pref in ctx.curr_prefs.values():
+        blank_indifference_class = False
+        for indifference_class in pref:
+            if endowment in indifference_class:
+                indifference_class.remove(endowment)
+                if not indifference_class:
+                    blank_indifference_class = True
                 break
-        if blank_ic:
-            p.remove([])
-
+        if blank_indifference_class:
+            pref.remove([])
 
 
 def _remove_terminal_sinks(ctx):
@@ -221,27 +238,29 @@ def _remove_terminal_sinks(ctx):
     for sink in sinks:
         if _is_terminal(sink, ctx):
             found_terminal_sink = True
-            for a in sink:
+            for agent in sink:
                 #  make assignment:
-                #  remove curr_pref[a], G[a], curr_end[a]
-                #  add alloc[a]
-                #  NB. _update_ends() takes care of ends[a] and prefs[a] so don't worry about
-                #  it here
-                alloc = ctx.curr_ends[a]
-                if a in ctx.alloc:
-                    ctx.alloc[a].append(alloc)
+                #  remove curr_pref[agent], G[agent], curr_end[agent]
+                #  add alloc[agent]
+                #  NB. _update_ends() takes care of ends[agent] and prefs[agent] so
+                #  don't worry about it here
+                alloc = ctx.curr_ends[agent]
+                if agent in ctx.alloc:
+                    ctx.alloc[agent].append(alloc)
                 else:
-                    ctx.alloc[a] = [alloc]
-                del ctx.curr_ends[a]  # remove it from the problem
-                del ctx.G[a]
-                del ctx.curr_prefs[a]
+                    ctx.alloc[agent] = [alloc]
+                del ctx.curr_ends[agent]  # remove it from the problem
+                del ctx.G[agent]
+                del ctx.curr_prefs[agent]
                 # Now you have to remove alloc from everyone else's curre_prefs
                 _scrub_from_curr_prefs(ctx, alloc)
 
     return found_terminal_sink
 
 
-def _update_context_and_clear_cycles(ctx):  # rename this to _update_context_and_build_graph
+def _update_ctx_and_build_graph(ctx):
+    """Clean up endowments (pop them) and preferences, build TTC graph, and update
+    the unsatisfied set"""
     _update_ends(ctx)
     _get_curr_prefs(ctx)
     _build_ttc_graph(ctx)
@@ -249,86 +268,104 @@ def _update_context_and_clear_cycles(ctx):  # rename this to _update_context_and
 
 
 def _iteratively_remove_sinks(ctx):
-    _update_context_and_clear_cycles(ctx)
+    """Remove terminal sinks and update the context until there are none left"""
+    _update_ctx_and_build_graph(ctx)
     while _remove_terminal_sinks(ctx):
-        _update_context_and_clear_cycles(ctx)
+        _update_ctx_and_build_graph(ctx)
 
 
 def _subgraph(ctx, priority):
+    """ Selects a subgraph of ctx.G so that every vertex has exactly one out edge.
+     This subgraph is calculated according to the HPO TTC described by Saban and Sethuraman"""
     agent_priority = _agent_priority(ctx, priority)
-    F = {}
-    L = set({})
+    graph_selection = {}
+    labeled = set({})
     if ctx.persistence_test:
-        _persistence_select(F, L, ctx.persistence_test)
-    _U_select(F, L, ctx.U, ctx.G, agent_priority)
-    _sat_select(F, L, ctx.G, agent_priority)
-    return F
+        _persistence_select(graph_selection, labeled, ctx.persistence_test)
+    _unsat_select(graph_selection, labeled, ctx.U, ctx.G, agent_priority)
+    _sat_select(graph_selection, labeled, ctx.G, agent_priority)
+    return graph_selection
 
 
 def _agent_priority(ctx, priority):
+    """Given a priority over endowments, returns a function that takes an agent and returns
+    the priority of his current endowment."""
     return lambda a: priority[ctx.curr_ends[a]]
 
 
-def _reverse_graph(G):
-    reverse_G = {v: set({}) for v in G}
-    for v, ws in G.items():
-        for w in ws:
-            reverse_G[w].add(v)
-    return reverse_G
+def _reverse_graph(graph):
+    """ Given a directed graph, returns a new graph with the edges reversed """
+    reverse_graph = {v: set({}) for v in graph}
+    for vertex, neighbors in graph.items():
+        for neighbor in neighbors:
+            reverse_graph[neighbor].add(vertex)
+    return reverse_graph
 
 
-def _U_select(F, L, U, G, agent_priority):
+def _unsat_select(graph_selection, labeled, unsat_set, graph, agent_priority):
     """
-    updates F for members of U so that there's an edge to each member's highest priority neighbor
-    in G agent_priority is a function mapping agents to their endowment's priority
+    updates graph_selection for members of unsat so that there's an edge to each member's
+    highest priority neighbor in graph.
+    agent_priority is a function mapping agents to their endowment's priority
     """
-    for u in U:
-        F[u] = min(G[u], key=agent_priority)
-        L.add(u)
+    for unsat in unsat_set:
+        graph_selection[unsat] = min(graph[unsat], key=agent_priority)
+        labeled.add(unsat)
 
 
-def _persistence_select(F, L, persistence_test):
-    for a in persistence_test:
-        persist = persistence_test[a]()
+def _persistence_select(graph_selection, labeled, persistence_test):
+    """
+    For each vertex where persistence_test returns a vertex (not None), set the edge
+    in graph_selection from that vertex to this return value. Also mark that vertex as
+    labeled.
+    """
+    for vertex in persistence_test:
+        persist = persistence_test[vertex]()
         if persist:
-            F[a] = persist
-            L.add(a)
+            graph_selection[vertex] = persist
+            labeled.add(vertex)
 
 
-def _sat_select(F, L, G, agent_priority):
+def _sat_select(graph_selection, labeled, graph, agent_priority):
     """
     Keep sets of labeled (who have an out edge in F) and unlabeled vertices of F. Label each
     vertex by labeling unlabeled vertices that are adjacent to labeled vertices.
     """
-    UL = set(G.keys()).difference(L)
-    AL = HeapSet(agent_priority)  # Adjacent to labeled
-    reverse_G = _reverse_graph(G)
-    while UL:
-        _collect_adjacent_to_labeled(AL, reverse_G, L)
-        a = AL.pop()
-        labeled_adjacent_to_a = filter(lambda adj_to_a: adj_to_a in L, G[a])
-        F[a] = min(labeled_adjacent_to_a, key=agent_priority)
-        L.add(a)
-        UL.remove(a)
+    unlabeled = set(graph.keys()).difference(labeled)
+    adjacent_to_labeled = HeapSet(agent_priority)  # Adjacent to labeled
+    reverse_graph = _reverse_graph(graph)
+    while unlabeled:
+        _collect_adjacent_to_labeled(adjacent_to_labeled, reverse_graph, labeled)
+        vertex = adjacent_to_labeled.pop()
+        labeled_adjacent_to_a = [neighbor for neighbor in graph[vertex] if neighbor in labeled]
+        graph_selection[vertex] = min(labeled_adjacent_to_a, key=agent_priority)
+        labeled.add(vertex)
+        unlabeled.remove(vertex)
 
 
-def _collect_adjacent_to_labeled(AL, reverse_G, L):
-    for labeled in L:
-        for a in reverse_G[labeled]:
-            if a not in L:
-                AL.add(a)
+def _collect_adjacent_to_labeled(adjacent_to_labeled, reverse_graph, labeled):
+    """ Given a HeapSet of vertices that are adjacent to vetices in labeled,
+    and reverse_graph (a mapping from each vertex to the vertices that have edges to it)
+    update adjacent_to_labeled by adding all vertices that have a neighbor in labeled
+    """
+    for vertex in labeled:
+        for reverse_neighbor in reverse_graph[vertex]:
+            if reverse_neighbor not in labeled:
+                adjacent_to_labeled.add(reverse_neighbor)
 
 
-def _first_reachable_U(F, ctx):
+def _first_reachable_unsat(graph_selection, ctx):
+    """ Given a context and a graph selection, update the context's X to map each agent to
+    his first reachable unsatisfied agent."""
     ctx.X.clear()
-    verts = set(F.keys())
+    verts = set(graph_selection.keys())
     while verts:
         curr_vert = verts.pop()
         path = [curr_vert]
-        curr_vert = F[curr_vert]
+        curr_vert = graph_selection[curr_vert]
         while curr_vert not in ctx.U and curr_vert not in ctx.X:
             path.append(curr_vert)
-            curr_vert = F[curr_vert]
+            curr_vert = graph_selection[curr_vert]
             assert curr_vert not in path  # If this fails, we're going in circles and shouldn't be.
         for vert in path:
             if curr_vert in ctx.U:
@@ -340,32 +377,38 @@ def _first_reachable_U(F, ctx):
     return ctx.X
 
 
-def _record_persistences(ctx, F):
-    for a in ctx.X.keys():
-        ctx.persistence_test[a] = _persistence(ctx, F, a, ctx.curr_ends[ctx.X[a]])
-
-
-def _persistence(ctx, F, a, end):
+def _record_persistences(ctx, graph_selection):
+    """Given a context and a graph selection, for each vertex, set ctx.persistence_test to a
+    function that either returns the first unsatisfied agent reachable from that vertex _if_ that
+    agent is still unsatisfied and None otherwise.
     """
-    Returns a function that returns F[a] if the first reachable unsatisfied agent in F still
-    holds end
+    for vertex in ctx.X.keys():
+        ctx.persistence_test[vertex] = _persistence(ctx, graph_selection, vertex,
+                                                    ctx.curr_ends[ctx.X[vertex]])
+
+
+def _persistence(ctx, graph_selection, vertex, end):
     """
-    return lambda: F[a] if ctx.curr_ends[ctx.X[a]] == end else None
+    returns a function that returns graph_selection[vertex] _if_ the first  unsatisfied agent
+    reachable from vertex holds the same endowment as he currently does. The function returns
+    None otherwise.
+    """
+    return lambda: graph_selection[vertex] if ctx.curr_ends[ctx.X[vertex]] == end else None
 
 
-def _trade(ctx, F):
+def _trade(ctx, graph_selection):
     """
     Find cycles in F efficiently using Tarjan's algorithm.
     """
     # tarjan takes a dict with list values
-    tarjan_F = {a: [e] for a, e in F.items()}
-    cycles = tarjan(tarjan_F)
+    tarjan_graph = {vert: [neighbor] for vert, neighbor in graph_selection.items()}
+    cycles = tarjan(tarjan_graph)
 
     for cycle in cycles:
         last_end = ctx.curr_ends[cycle[-1]]
         if len(cycle) > 1:
             # Tarjan finds SCCs. With out degree of 1 for every vertex, if len(cycle) == 1,
             # it's not a cycle
-            for a, b in reversed(list(zip(cycle[1:], cycle[:-1]))):
-                ctx.curr_ends[a] = ctx.curr_ends[b]
+            for vert, pred in reversed(list(zip(cycle[1:], cycle[:-1]))):
+                ctx.curr_ends[vert] = ctx.curr_ends[pred]
             ctx.curr_ends[cycle[0]] = last_end

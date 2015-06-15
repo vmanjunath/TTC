@@ -232,7 +232,7 @@ class SubgraphTest(unittest.TestCase):
         agent_priority = lambda a: self.priority[self.ctx.curr_ends[a]]
         F = {}
         L = set({})
-        ttc._U_select(F, L, self.ctx.U, self.ctx.G, agent_priority)
+        ttc._unsat_select(F, L, self.ctx.U, self.ctx.G, agent_priority)
         expected_F = {
             4: 3,
             5: 1,
@@ -270,7 +270,7 @@ class SubgraphTest(unittest.TestCase):
             5: 1,
             6: 2
         }
-        ttc._first_reachable_U(F, self.ctx)
+        ttc._first_reachable_unsat(F, self.ctx)
         expected_X = {
             1: 5,
             2: 4,
