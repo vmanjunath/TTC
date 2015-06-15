@@ -354,6 +354,8 @@ class TTCTest(unittest.TestCase):
         prefs = {'a1': [['o1', 'o2']], 'a2': [['o1'], ['o2']]}
         ends = {'a1': ['o1'], 'a2': ['o2']}
         priority = {'o1': 1, 'o2': 2}
+        agents = {'a1', 'a2'}
+        num_ends = {a: len(ends[a]) for a in agents}
 
         ends_keys = set(ends.keys())
         alloc = ttc.ttc(prefs, ends, priority)
@@ -362,13 +364,13 @@ class TTCTest(unittest.TestCase):
         self.assertEqual(set(alloc.keys()), ends_keys)
 
         # Every agent gets as many allocated as he was endowed with
-        for agent in ends:
-            self.assertEqual(len(alloc[agent]), len(ends[agent]))
+        for agent in agents:
+            self.assertEqual(len(alloc[agent]), num_ends[agent])
 
         # for each pair of agents, if endowment is allocated to agent_1,
         # it's not allocated to agent_2
-        for agent_1 in ends:
-            for agent_2 in ends:
+        for agent_1 in agents:
+            for agent_2 in agents:
                 if agent_2 != agent_1:
                     for endowment in alloc[agent_1]:
                         self.assertNotIn(endowment, alloc[agent_2])
