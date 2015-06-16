@@ -105,6 +105,8 @@ def ttc(prefs, ends, priority):
 
         graph_selection = _subgraph(ctx, priority)
 
+        _first_reachable_unsat(graph_selection, ctx)
+
         _record_persistences(ctx, graph_selection)
 
         _trade(ctx, graph_selection)
@@ -116,7 +118,7 @@ def _update_ends(ctx):
     """
     For each agent with an endowment in ctx.ends but not in ctx.curr_ends, pop the first element of
     his ctx.ends. If there isn't anything there, you need to do some housekeeping: delete him from
-    ctx.prefs, delete him from ctx.ends
+    ctx.prefs, ctx.ends, and ctx.persistence_test
     """
     to_delete = []
     for agent in ctx.ends:
@@ -130,6 +132,8 @@ def _update_ends(ctx):
     for agent in to_delete:
         del ctx.ends[agent]
         del ctx.prefs[agent]
+        if ctx.persistence_test:
+            del ctx.persistence_test[agent]
 
 
 def _get_curr_agent_prefs(pref, end_set):
@@ -144,7 +148,7 @@ def _get_curr_agent_prefs(pref, end_set):
         clean_indifference_class = [endowment for endowment in indifference_class
                                     if endowment in end_set]
         if clean_indifference_class:
-            clean_pref.append(indifference_class)
+            clean_pref.append(clean_indifference_class)
 
     return clean_pref
 
@@ -354,8 +358,8 @@ def _collect_adjacent_to_labeled(adjacent_to_labeled, reverse_graph, labeled):
 
 
 def _first_reachable_unsat(graph_selection, ctx):
-    """ Given a context and a graph selection, update the context's X to map each agent to
-    his first reachable unsatisfied agent."""
+    """ Given a context and a graph selection, update the context's reachable_unsat to map each
+    agent to his first reachable unsatisfied agent."""
     ctx.reachable_unsat.clear()
     verts = set(graph_selection.keys())
     while verts:
@@ -365,7 +369,6 @@ def _first_reachable_unsat(graph_selection, ctx):
         while curr_vert not in ctx.unsat and curr_vert not in ctx.reachable_unsat:
             path.append(curr_vert)
             curr_vert = graph_selection[curr_vert]
-            assert curr_vert not in path  # If this fails, we're going in circles and shouldn't be.
         for vert in path:
             if curr_vert in ctx.unsat:
                 ctx.reachable_unsat[vert] = curr_vert
@@ -381,6 +384,7 @@ def _record_persistences(ctx, graph_selection):
     function that either returns the first unsatisfied agent reachable from that vertex _if_ that
     agent is still unsatisfied and None otherwise.
     """
+    ctx.persistence_test.clear()
     for vertex in ctx.reachable_unsat.keys():
         ctx.persistence_test[vertex] = _persistence(ctx, graph_selection, vertex,
                                                     ctx.curr_ends[ctx.reachable_unsat[vertex]])
@@ -392,8 +396,8 @@ def _persistence(ctx, graph_selection, vertex, end):
     reachable from vertex holds the same endowment as he currently does. The function returns
     None otherwise.
     """
-    return lambda: graph_selection[vertex] if \
-        ctx.curr_ends[ctx.reachable_unsat[vertex]] == end else None
+    return lambda: graph_selection[vertex] if ctx.reachable_unsat[vertex]in ctx.curr_ends\
+        and ctx.curr_ends[ctx.reachable_unsat[vertex]] == end else None
 
 
 def _trade(ctx, graph_selection):

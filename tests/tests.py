@@ -527,3 +527,32 @@ class TTCTest(unittest.TestCase):
 
         self.assertEqual(alloc, expected_alloc)
 
+
+class MultipleEndowmentTest(unittest.TestCase):
+    def test_multiple_endowments(self):
+        """ The way the algorithm has been generalized to handle multiple endowments, this case
+        does not end up at an efficient allocation: 1 starts with endowment a, while 2 has c and
+        3 has d. After 1 and 2 trade, 2 is removed along with a. Since b is not among the current
+        endowments, 3 is subsequently removed and finally 1 is. This is a downside of the fact that
+        1 cannot offer b to 3 before c is assigned to him permanently.
+
+        If this becomes an issue, we can try to be more clever in when we remove agents.
+        """
+        prefs = {
+            1: [['c', 'd'], ['a', 'b']],
+            2: [['a', 'b'], ['c']],
+            3: [['a', 'b'], ['d']]
+        }
+        ends = {
+            1: ['a', 'b'],
+            2: ['c'],
+            3: ['d']
+        }
+        priority = dict(zip(list('abcd'), range(4)))
+
+        alloc = ttc.ttc(prefs, ends, priority)
+
+        # expect 1 and 2 to trade 'a' and 'c'
+        self.assertEqual(2, len(alloc[1]))
+
+        self.assertTrue('a' in alloc[2])
