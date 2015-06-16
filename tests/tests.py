@@ -529,7 +529,6 @@ class TTCTest(unittest.TestCase):
 
 
 class MultipleEndowmentTest(unittest.TestCase):
-    @unittest.skip
     def test_multiple_endowments(self):
         """ The way the algorithm has been generalized to handle multiple endowments, this case
         does not end up at an efficient allocation: 1 starts with endowment a, while 2 has c and
