@@ -199,6 +199,7 @@ def _is_sink(scc, graph):
                 return False
     return True
 
+
 def _get_sinks(graph):
     """ Run Tarjan's algorithm to find all strongly connected components of graph """
     sccs = tarjan(graph)
@@ -275,6 +276,7 @@ def _iteratively_remove_sinks(ctx):
     _update_ctx_and_build_graph(ctx)
     while _remove_terminal_sinks(ctx):
         _update_ctx_and_build_graph(ctx)
+    _update_ctx_and_build_graph(ctx)
 
 
 def _subgraph(ctx, priority):

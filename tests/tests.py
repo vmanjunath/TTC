@@ -529,6 +529,7 @@ class TTCTest(unittest.TestCase):
 
 
 class MultipleEndowmentTest(unittest.TestCase):
+    @unittest.skip
     def test_multiple_endowments(self):
         """ The way the algorithm has been generalized to handle multiple endowments, this case
         does not end up at an efficient allocation: 1 starts with endowment a, while 2 has c and
@@ -556,3 +557,33 @@ class MultipleEndowmentTest(unittest.TestCase):
         self.assertEqual(2, len(alloc[1]))
 
         self.assertTrue('a' in alloc[2])
+
+    def test_multiple_endowments_2(self):
+        """
+        The algorithm should still find trades for the second edowment in cases where other
+        agents who offer possible trades for a second endowment are not removed like in
+        @test_multiple_endowments
+        """
+        prefs = {
+            1: [['c'], ['d'], ['a', 'b']],
+            2: [['a']],
+            3: [['a', 'b'], ['e']],  # Notice that e keeps 3 from being removed with 1 and 2
+            4: [['d', 'e']]
+        }
+        ends = {
+            1: ['a', 'b'],
+            2: ['c'],
+            3: ['d'],
+            4: ['e']
+        }
+        priority = dict(zip(list('abcde'), range(5)))
+
+        alloc = ttc.ttc(prefs, ends, priority)
+
+        # Expect 1 and 2 to trade 'a' and 'c'
+        # Then, 1 and 3 trade 'b' and 'd'
+        self.assertEqual(2, len(alloc[1]))
+        self.assertEqual(set(alloc[1]), {'c', 'd'})
+        self.assertEqual(set(alloc[2]), {'a'})
+        self.assertEqual(set(alloc[3]), {'b'})
+        self.assertEqual(set(alloc[4]), {'e'})
