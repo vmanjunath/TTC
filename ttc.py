@@ -201,8 +201,9 @@ def _get_sinks(graph):
     """ Run Tarjan's algorithm to find all strongly connected components of graph """
     sccs = tarjan(graph)
     sinks = [scc for scc in sccs if _is_sink(scc, graph)]
-    # TODO: figure out if it's ever reasonable for sinks to be empty.
 
+    # Only the empty graph has no sinks. This will happen at the very end of the algorithm
+    assert len(sinks) > 0 or not graph
     return sinks
 
 
