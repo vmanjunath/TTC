@@ -142,13 +142,16 @@ class SinkAnalysisTest(unittest.TestCase):
         self.assertNotIn('a', ctx.curr_ends)
 
     def test_iterative_sink_removal(self):
-        prefs = {
+        curr_prefs = {
             'a{}'.format(i): [[x] for x in range(i+1)] for i in range(5)
         }
-        ends = {'a{}'.format(i): [i] for i in range(5)}
+        curr_ends = {'a{}'.format(i): i for i in range(5)}
+        graph = {'a{}'.format(i): ['a0'] for i in range(5)}
         ctx = new_context(
-            prefs=prefs,
-            ends=ends
+            curr_prefs=curr_prefs,
+            curr_ends=curr_ends,
+            graph=graph,
+            unsat={'a1', 'a2', 'a3', 'a4'}
         )
         ttc._iteratively_remove_sinks(ctx)
         self.assertEqual(ctx.alloc['a0'], [0])

@@ -96,10 +96,7 @@ def ttc(prefs, ends, priority):
         reachable_unsat={}
     )
     while ctx.prefs:
-        _update_ends(ctx)
-        _get_curr_prefs(ctx)
-
-        _build_ttc_graph(ctx)
+        _update_ctx_and_build_graph(ctx)
 
         _iteratively_remove_sinks(ctx)
 
@@ -256,7 +253,7 @@ def _remove_terminal_sinks(ctx):
                 del ctx.curr_ends[agent]  # remove it from the problem
                 del ctx.graph[agent]
                 del ctx.curr_prefs[agent]
-                # Now you have to remove alloc from everyone else's curre_prefs
+                # Now you have to remove alloc from everyone else's curr_prefs
                 _scrub_from_curr_prefs(ctx, alloc)
 
     return found_terminal_sink
@@ -273,10 +270,8 @@ def _update_ctx_and_build_graph(ctx):
 
 def _iteratively_remove_sinks(ctx):
     """Remove terminal sinks and update the context until there are none left"""
-    _update_ctx_and_build_graph(ctx)
     while _remove_terminal_sinks(ctx):
         _update_ctx_and_build_graph(ctx)
-    _update_ctx_and_build_graph(ctx)
 
 
 def _subgraph(ctx, priority):
