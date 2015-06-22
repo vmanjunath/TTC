@@ -37,12 +37,14 @@ TTCContext = namedtuple(
                              # persistence.
         'unsat',  # Set of unsatisfied agents in current round
         'alloc',  # The final allocation
-        'reachable_unsat'  # First reachable unsatisfied agent
+        'reachable_unsat',  # First reachable unsatisfied agent
+        'conflict'  # A function that takes a pair of endowments and returns
+                    # True if they cannot be assigned to the same agent.
     ]
-    )
+)
 
 
-def ttc(prefs, ends, priority):
+def ttc(prefs, ends, priority, conflict=None):
     """
     :param prefs: dict with agents as keys and lists of lists of endowments as values
     Example:
@@ -63,6 +65,10 @@ def ttc(prefs, ends, priority):
     :param priority: dict with endowments as keys and numerical values
      {'endowment 1': 3, 'endowment 3': 5, 'endowment 2': 3.4, ... }
      NB. Each value in ends has to be a key in priority
+     :param conflict: boolean valued function that takes
+    two endowments as input and returns True only when the two endowments are incompatible
+    (i.e. no agent can be assigned both of endowments).
+    NB. We could easily make this function take a third argument to make it agent specific.
     :return: a dict with agents as keys and lists of endowments as values
     Example:
     {
@@ -78,11 +84,6 @@ def ttc(prefs, ends, priority):
     above listed example for ends, we would start with a single endowment input where
     agent 1 starts with endowment 1, agent 2 starts with endowment 3, and agent 3 starts
     with endowment 8.
-
-    TO DO: add a fourth parameter conflict which is a boolean valued function that takes
-    two endowments as input and returns True only when the two endowments are incompatible
-    (i.e. no agent can be assigned both of endowments). We could easily make this function
-    take a third argument to make it agent specific.
     """
     ctx = TTCContext(
         prefs=prefs,
@@ -93,7 +94,8 @@ def ttc(prefs, ends, priority):
         persistence_test={},
         unsat=set({}),
         alloc={},
-        reachable_unsat={}
+        reachable_unsat={},
+        conflict=conflict
     )
     while ctx.prefs:
         _update_ctx_and_build_graph(ctx)
@@ -133,17 +135,20 @@ def _update_ends(ctx):
             del ctx.persistence_test[agent]
 
 
-def _get_curr_agent_prefs(pref, end_set):
+def _get_curr_agent_prefs(pref, end_set, conflict=None):
     """
     Takes a single agents preferences and the set of available endowments and returns a
     'cleaned up' version of the input preference by filtering out any endowment that isn't
     in end_set
-    TODO: filter out objects that conflict with other endowments or allocs from preferences
     """
     clean_pref = []
     for indifference_class in pref:
-        clean_indifference_class = [endowment for endowment in indifference_class
-                                    if endowment in end_set]
+        if conflict:
+            clean_indifference_class = [endowment for endowment in indifference_class
+                                        if endowment in end_set if not conflict(endowment)]
+        else:
+            clean_indifference_class = [endowment for endowment in indifference_class
+                                        if endowment in end_set]
         if clean_indifference_class:
             clean_pref.append(clean_indifference_class)
 
@@ -157,7 +162,19 @@ def _get_curr_prefs(ctx):
     # all possible endowments
     end_set = reduce(lambda x, y: x.union({y}), ctx.curr_ends.values(), set({}))
     for agent, pref in ctx.prefs.items():
-        ctx.curr_prefs[agent] = _get_curr_agent_prefs(pref, end_set)
+        ctx.curr_prefs[agent] = _get_curr_agent_prefs(pref, end_set,
+                                                      lambda x: _agent_conflict(x, agent, ctx))
+
+
+def _agent_conflict(endowment, agent, ctx):
+    """
+    Given an agent and a context, check if endowment conflicts with agent's existing allocs
+    """
+    if agent in ctx.alloc:
+        if [conflicted for conflicted in ctx.alloc[agent] if ctx.conflict(endowment, conflicted)]:
+            return True
+    return [conflicted for conflicted in ctx.ends[agent]
+            if ctx.conflict(endowment, conflicted)] != []
 
 
 def _build_ttc_graph(ctx):

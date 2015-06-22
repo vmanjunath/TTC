@@ -4,7 +4,8 @@ import ttc
 
 
 def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, graph=None,
-                persistence_test=None, unsat=None, alloc=None, reachable_unsat=None):
+                persistence_test=None, unsat=None, alloc=None, reachable_unsat=None,
+                conflict=lambda x, y: False):
     return ttc.TTCContext(
         prefs=prefs or {},
         curr_ends=curr_ends or {},
@@ -14,7 +15,8 @@ def new_context(prefs=None, curr_ends=None, ends=None, curr_prefs=None, graph=No
         persistence_test=persistence_test or {},
         unsat=unsat or set({}),
         alloc=alloc or {},
-        reachable_unsat=reachable_unsat or {}
+        reachable_unsat=reachable_unsat or {},
+        conflict=conflict
     )
 
 
@@ -58,7 +60,7 @@ class GetCurrPrefsTest(unittest.TestCase):
             curr_ends={
                 'a1': 0,
                 'a2': 1
-            },
+            }
         )
 
     def test_get_curr_prefs_omits_non_curr_ends(self):
@@ -70,6 +72,78 @@ class GetCurrPrefsTest(unittest.TestCase):
         ttc._get_curr_prefs(self.ctx)
 
         self.assertIn(1, self.ctx.curr_prefs['a1'][0])
+
+
+class GetCurrPrefsConflcitTest(unittest.TestCase):
+    def test_get_curr_agent_prefs_removes_endowments_that_conflict(self):
+        pref = [
+            ['a'],
+            ['b', 'c'],
+            ['d', 'e']
+        ]
+        end_set = set('abcdef')
+        conflict = lambda x: x == 'a' or x == 'c' or x == 'd'
+        expected_pref = [
+            ['b'],
+            ['e']
+        ]
+        clean_pref = ttc._get_curr_agent_prefs(pref, end_set, conflict)
+        self.assertEqual(clean_pref, expected_pref)
+
+    def test_get_curr_prefs_removes_endowments_that_conflict_with_previous_allocs(self):
+        ctx = new_context(
+            prefs={
+                1: [['a', 'b', 'c'], ['d'], ['e', 'f']],
+                2: [list('abcdef')],
+                3: [['a'], ['f']],
+                4: [['a'], ['f']],
+                5: [['a'], ['f']],
+            },
+            alloc={
+                1: ['a']
+            },
+            curr_ends={
+                1: 'b',
+                2: 'c',
+                3: 'd',
+                4: 'e',
+                5: 'f'
+            },
+            ends={
+                i: [] for i in range(1, 6)
+            },
+            conflict=lambda x, y: {x, y} == {'a', 'b'}  # only conflict is between a and b
+        )
+        ttc._get_curr_prefs(ctx)
+        expected_pref = [
+            ['c'], ['d'], ['e', 'f']
+        ]
+        self.assertEqual(expected_pref, ctx.curr_prefs[1])
+
+    def test_get_curr_prefs_removes_endowments_that_conflict_with_remaining_ends(self):
+        ctx = new_context(
+            prefs={
+                1: [list('abcd)')],
+                2: [list('abcd')],
+                3: [['a'], ['c']],
+            },
+            ends={
+                1: ['d'],
+                2: [],
+                3: []
+            },
+            curr_ends={
+                1: 'a',
+                2: 'b',
+                3: 'c',
+            },
+            conflict=lambda x, y: {x, y} == {'c', 'd'}  # only conflict is between c and d
+        )
+        ttc._get_curr_prefs(ctx)
+        expected_pref = [
+            list('ab')  # without considering conflict would be abc, but c conflicts with d
+        ]
+        self.assertEqual(expected_pref, ctx.curr_prefs[1])
 
 
 class BuildGraphTest(unittest.TestCase):
@@ -179,8 +253,8 @@ class UnsatisfiedTest(unittest.TestCase):
             curr_prefs={
                 'a': [[1], [0]],
                 'b': [[1], [0]]
-                },
-            )
+            },
+        )
         ttc._collect_unsatisfied(ctx)
         self.assertIn('a', ctx.unsat)
         self.assertNotIn('b', ctx.unsat)
@@ -196,7 +270,7 @@ class SubgraphTest(unittest.TestCase):
                 4: [3],
                 5: [1, 6],
                 6: [2]
-                },
+            },
             unsat={4, 5, 6},
             curr_ends=dict(zip(range(1, 7), 'abcdef')),
             reachable_unsat={
@@ -337,6 +411,10 @@ class TradeTest(unittest.TestCase):
         self.assertEqual(expected_curr_ends, ctx.curr_ends)
 
 
+def empty_conflict(end1, end2):
+    return False
+
+
 class TTCTest(unittest.TestCase):
     def test_simple_case(self):
         prefs = {
@@ -361,7 +439,7 @@ class TTCTest(unittest.TestCase):
         num_ends = {a: len(ends[a]) for a in agents}
 
         ends_keys = set(ends.keys())
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
 
         # Every agent gets an endowment
         self.assertEqual(set(alloc.keys()), ends_keys)
@@ -390,7 +468,7 @@ class TTCTest(unittest.TestCase):
         }
         ends = {i: [o] for i, o in zip(range(1, 7), list('abcdef'))}
         priority = dict(zip(list('abcdef'), range(1, 7)))
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
         expected_alloc = {
             1: ['a'],
             2: ['d'],
@@ -427,7 +505,7 @@ class TTCTest(unittest.TestCase):
             5: ['f'],
             6: ['b']
         }
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
         self.assertEqual(expected_alloc, alloc)
 
     def test_example_from_jaramillo_manjunath(self):
@@ -447,7 +525,7 @@ class TTCTest(unittest.TestCase):
         ends = {a: [e] for a, e in dict(zip(range(1, 12), list('abcdefghijk'))).items()}
         priority = dict(zip(list('abcdefghijk'), range(1, 12)))
 
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
         expected_alloc = {
             1: ['a'],
             2: ['b'],
@@ -504,7 +582,7 @@ class TTCTest(unittest.TestCase):
             10: ['j'],
             11: ['k']
         }
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
         self.assertEqual(alloc, expected_alloc)
 
     def test_unzu_molis_1(self):
@@ -523,7 +601,7 @@ class TTCTest(unittest.TestCase):
         priority = {'h{}'.format(i): i for i in range(1, 11)}
         ends = {'a{}'.format(i): ['h{}'.format(i)] for i in range(1, 11)}
 
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
         expected_alloc = {'a3': ['h5'], 'a8': ['h8'], 'a2': ['h3'],
                           'a4': ['h1'], 'a5': ['h4'], 'a7': ['h6'],
                           'a6': ['h7'], 'a1': ['h2'], 'a10': ['h10'], 'a9': ['h9']}
@@ -553,7 +631,7 @@ class MultipleEndowmentTest(unittest.TestCase):
         }
         priority = dict(zip(list('abcd'), range(4)))
 
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
 
         # expect 1 and 2 to trade 'a' and 'c'
         self.assertEqual(2, len(alloc[1]))
@@ -580,7 +658,7 @@ class MultipleEndowmentTest(unittest.TestCase):
         }
         priority = dict(zip(list('abcde'), range(5)))
 
-        alloc = ttc.ttc(prefs, ends, priority)
+        alloc = ttc.ttc(prefs, ends, priority, empty_conflict)
 
         # Expect 1 and 2 to trade 'a' and 'c'
         # Then, 1 and 3 trade 'b' and 'd'
@@ -589,3 +667,15 @@ class MultipleEndowmentTest(unittest.TestCase):
         self.assertEqual(set(alloc[2]), {'a'})
         self.assertEqual(set(alloc[3]), {'b'})
         self.assertEqual(set(alloc[4]), {'e'})
+
+    def test_multiple_endowments_with_conflict(self):
+        prefs = {
+            1: [['c'], ['b'], ['a']],
+            2: [['a'], ['c']]
+        }
+        ends = {1: ['a', 'b'], 2: ['c']}
+        priority = dict(zip(list('abc'), range(3)))
+        conflict = lambda x, y: {x, y} == {'b', 'c'}
+        alloc = ttc.ttc(prefs, ends, priority, conflict)
+
+        self.assertEqual(set(alloc[1]), {'a', 'b'})
