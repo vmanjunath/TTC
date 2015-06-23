@@ -65,9 +65,10 @@ def ttc(prefs, ends, priority, conflict=None):
     :param priority: dict with endowments as keys and numerical values
      {'endowment 1': 3, 'endowment 3': 5, 'endowment 2': 3.4, ... }
      NB. Each value in ends has to be a key in priority
-     :param conflict: boolean valued function that takes
+    :param conflict: (optional) boolean valued function that takes
     two endowments as input and returns True only when the two endowments are incompatible
-    (i.e. no agent can be assigned both of endowments).
+    (i.e. no agent can be assigned both of endowments). Defaults to there being no conflict
+    between any shifts. 
     NB. We could easily make this function take a third argument to make it agent specific.
     :return: a dict with agents as keys and lists of endowments as values
     Example:
@@ -95,7 +96,7 @@ def ttc(prefs, ends, priority, conflict=None):
         unsat=set({}),
         alloc={},
         reachable_unsat={},
-        conflict=conflict
+        conflict=conflict or (lambda x, y: False)
     )
     while ctx.prefs:
         _update_ctx_and_build_graph(ctx)
